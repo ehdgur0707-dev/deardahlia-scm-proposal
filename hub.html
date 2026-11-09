@@ -142,6 +142,7 @@ textarea.out{width:100%;min-height:240px;font-family:var(--mono);font-size:12px;
     <p class="grp">공통</p>
     <a href="#master" data-v="master"><span class="code">M0</span>기준정보</a>
     <a href="#sources" data-v="sources"><span class="code">M1</span>연동·수집 관리</a>
+    <a href="#log" data-v="log"><span class="code">M2</span>작업 로그</a>
   </nav>
   <main>
     <div class="topbar">
@@ -179,7 +180,7 @@ let S;
 /* ---------- 임의 데이터 생성 ---------- */
 function gen(){
   R=mulberry32(20261109);
-  S={seq:1104,clock:'09:40',nextCut:'11:00',batches:[],history:[],done:{},sel:null,collectRunAt:'09:30',srcLog:[]};
+  S={seq:1104,clock:'09:40',nextCut:'11:00',batches:[],history:[],done:{},sel:null,collectRunAt:'09:30',srcLog:[],actlog:[],fails:{},fseq:0,flags:{sgFail:true,cutFail:true},logF:'all',logA:''};
   const V4=['50ml','30ml','미니 10ml','리필'],V3=['200ml','100ml','리필'];
   const LINES=[
     {c:'LT',n:'글로우 틴트',cat:'립',b:'DD',k:10,moq:3000,cost:2100,lt:8,shelf:30,ct:'CT-TINT'},
@@ -251,7 +252,7 @@ function gen(){
   /* 판매가 적은데 MOQ가 큰 SKU: 발주하면 폐기 위험이 생기는 사례 */
   [['DD-LP-07',140],['DD-EL-03',150],['DD-LJ-09',120]].forEach(([k,m])=>{S.skuMap[k].monthly=m;S.lots.filter(l=>l.sku===k).forEach((l,i)=>{l.onhand=i===0?60:40;l.qc=0;l.alloc=0;});
     S.countries.forEach(C=>{S.osRaw[C.c]=S.osRaw[C.c].filter(r=>r.sku!==k||r.qty<0);});});
-  S.countries.forEach(C=>S.osRaw[C.c].forEach((r,i)=>r.row=i+2));
+  S.countries.forEach(C=>S.osRaw[C.c].forEach((r,i)=>{r.row=i+2;r.id=C.c+'r'+(i+2);}));
 
   /* 채널 */
   S.channels=[
@@ -338,7 +339,86 @@ function gen(){
     {at:'06:00',id:'erp',msg:'원가·매입 1,840행 내보내기 파일 수신'},
   ];
   runCollect();
+  const seed=[
+    ['06:00','시스템(자동)','수집','ERP 원가·매입 내보내기 파일 수집','ERP','성공','1,840행 수신, 검증 통과'],
+    ['06:40','시스템(자동)','수집','미국 3PL 파일 수집','US_stock_1109.csv','성공','53행 반영 · 급감 경고 1건은 확인 요청'],
+    ['06:55','시스템(자동)','수집','프랑스 3PL API 조회','FR 3PL API','성공','57행 반영'],
+    ['07:05','시스템(자동)','수집','일본 3PL 파일 수집','JP_zaiko_20261109.csv','부분 반영','53행 반영 · 2행 격리 (아래 실패 2건)'],
+    ['07:30','시스템(자동)','수집','싱가포르 3PL 포털 내려받기','SG 포털','성공','48행 반영'],
+    ['09:10','BM','보류','보류 요청','H-1103 DD-LS-03 250개','성공','요청 가능 수량에서 바로 차감'],
+    ['09:30','시스템(자동)','수집','국내 WMS 재고 조회 (30분 자동)','KR WMS','성공','로트 296행 반영'],
+    ['09:40','시스템(자동)','수집','주문·송장 API 조회 (10분 자동)','주문·송장 솔루션','성공','주문 212건 · 신규 출고 지시 3건'],
+  ];
+  seed.forEach(([at,who,area,action,target,result,reason])=>S.actlog.push({at,who,area,action,target,result,reason,fid:null}));
+  S.actlog.sort((a,b)=>a.at<b.at?1:a.at>b.at?-1:0);
 }
+/* ---------- 작업 로그 · 실패 처리 ---------- */
+function alog(o){const e={at:o.at||S.clock,who:o.who||'시스템(자동)',area:o.area,action:o.action,target:o.target||'',result:o.result||(o.ok?'성공':'실패'),reason:o.reason||'',fid:o.fid||null};
+  S.actlog.unshift(e);S.actlog.sort((a,b)=>a.at<b.at?1:a.at>b.at?-1:0);return e;}
+function fail(f,show){S.fails[f.id]={...f,resolved:false,at:f.at||S.clock};
+  alog({at:f.at,area:f.area,action:f.action,target:f.target,ok:false,reason:f.reason,who:f.who||'시스템(자동)',fid:f.id});
+  if(show)showFail(f.id);}
+function resolveFail(id,how,mode,who){const f=S.fails[id];if(!f||f.resolved)return;f.resolved=true;f.how=how;
+  alog({area:f.area,action:f.action,target:f.target,result:{fix:'수정 후 반영',manual:'수동 처리',retry:'재시도 성공'}[mode],reason:how,who:who||f.owner,fid:id});}
+const FIXK={auto:'고쳐서 자동 재실행',retry:'다시 시도',manual:'수동 처리',note:'조치만'};
+function showFail(id){const f=S.fails[id];if(!f)return;
+  modal(f.resolved?'처리된 작업':'작업 실패 · 반영하지 않았습니다',`<div class="stack">
+    <div class="issue">${stPill(f.resolved?'처리 완료':'실패')}<span><b>${esc(f.action)}</b> · ${esc(f.target)}</span></div>
+    <div><b>원인</b><br>${esc(f.reason)}</div>
+    <div><b>지금 상태</b><br>${esc(f.impact)}</div>
+    <div class="muted">알림 받은 사람: ${esc(f.owner)} · ${f.at} · 작업 로그와 예외 처리함에 남았습니다</div>
+    ${f.resolved?`<div class="note">${esc(f.how)}</div>`:`<div class="stack" style="gap:8px">${f.fixes.map(x=>`<button class="${x.kind==='note'?'':'primary'}" style="text-align:left" data-fix="${f.id}|${x.key}"><b>${FIXK[x.kind]}</b> · ${esc(x.label)}</button>`).join('')}
+    <button data-fixlater="1">나중에 처리 (예외 처리함에 둠)</button></div>`}</div>`);}
+function syncFails(){S.files.forEach(fl=>fl.issues.forEach(i=>{if(!i.fid||S.fails[i.fid])return;
+  if(i.fid==='f-ae'){fail({id:'f-ae',l1:true,at:'07:35',area:'수집',action:'UAE 3PL 재고 파일 수집',target:'AE_stock (07:30 예정)',owner:'SCM물류',
+    reason:'예정 시각 07:30까지 메일함·SFTP 어디에도 파일이 오지 않았습니다. 재송부 요청 메일은 자동으로 보냈습니다.',
+    impact:'오늘 UAE 숫자는 반영하지 않았습니다. 어제(11/08 07:20) 검증본을 쓰고 화면에 어제 기준으로 표시합니다.',
+    fixes:[{key:'aeUpload',label:'3PL에게 따로 받은 파일을 직접 올리기 → 같은 검증 후 자동 반영',kind:'auto'},{key:'aeResend',label:'3PL에 재송부 요청 다시 보내기',kind:'note'}]});return;}
+  const neg=i.kind==='neg';
+  fail({id:i.fid,l1:true,at:fl.at,area:'수집',action:`${fl.src} 파일 행 반영`,target:`${i.row}행 ${i.sku}`,owner:'SCM물류',data:{c:fl.c,rid:i.rid},
+    reason:neg?`수량이 ${i.qty} (음수)입니다. 재고는 음수가 될 수 없어 의미 검증에서 걸렸습니다.`:`'${i.sku}'는 기준정보에 없는 SKU입니다. 오타이거나 신규 SKU 등록 누락입니다.`,
+    impact:neg?`이 행만 반영하지 않고 어제 값 ${fmt(i.prev)}개를 유지했습니다. 나머지 행은 반영했습니다.`:`이 행 ${fmt(i.qty)}개만 반영하지 않았습니다. 나머지 행은 반영했습니다.`,
+    fixes:neg?[{key:'rowFix',label:'올바른 수량을 입력 → 같은 검증 후 자동 반영',kind:'auto'},{key:'rowKeep',label:'3PL 확인 결과 어제 값이 맞음 → 어제 값으로 확정',kind:'manual'}]
+            :[{key:'skuFix',label:'올바른 SKU를 고르기 → 같은 검증 후 자동 반영',kind:'auto'},{key:'rowDrop',label:'이 행은 빼고 확정 (3PL에 정정 요청)',kind:'manual'}]});}));}
+const rawRow=f=>S.osRaw[f.data.c].find(r=>r.id===f.data.rid);
+const closeM=()=>{$('#modal').hidden=true;};
+function doCut(list,id,via){list.forEach(r=>{r.status='전송완료';r.sent=via?`${id} (${via})`:id;});S.batches.push({id,at:S.nextCut+(via?' '+via:''),n:list.length,list});
+  const cut=S.nextCut;S.clock=cut;S.nextCut=cut==='11:00'?'16:00':'내일 11:00';return cut;}
+const FIX={
+  aeUpload:f=>modal('파일 직접 올리기 · UAE 3PL',`<div class="stack"><p>3PL에게 메신저·메일로 따로 받은 파일을 올리면 자동 수집과 똑같이 형식 → 의미 → 업무 검증을 거쳐 반영합니다. 검증에 걸리면 반영하지 않고 다시 알려 드립니다.</p>
+    <label class="f">올릴 파일<select id="fxFile"><option value="ok">AE_stock_20261109.xlsx · 3PL 담당자가 메신저로 보냄</option><option value="bad">AE_stock_20261109(구양식).xls · 필수 컬럼 없음</option></select></label>
+    <div class="row"><span class="sp"></span><button class="primary" data-fixgo="${f.id}|aeUpload">올리고 검증하기</button></div></div>`),
+  aeResend:f=>{alog({area:'수집',action:'UAE 3PL 재송부 요청',target:'UAE 3PL 담당자',ok:true,who:'SCM물류',reason:'요청 메일 발송. 원래 수집은 아직 실패 상태'});closeM();render();toast('재송부 요청을 보냈습니다. 파일이 메일함에 오면 자동으로 검증·반영합니다');},
+  rowFix:f=>{const r=rawRow(f);modal(`수량 고치기 · ${f.target}`,`<div class="stack"><p>3PL에 확인한 올바른 수량을 넣으면 같은 검증을 거쳐 자동으로 반영합니다.</p>
+    <label class="f">올바른 수량 (파일 값 ${r.qty})<input id="fxQty" type="number" value="${Math.abs(r.qty)}"></label>
+    <div class="row"><span class="sp"></span><button class="primary" data-fixgo="${f.id}|rowFix">고치고 다시 반영</button></div></div>`);},
+  rowKeep:f=>{const r=rawRow(f);r.qty=r.prev;runCollect();resolveFail(f.id,`3PL 확인 후 어제 값 ${fmt(r.prev)}개로 확정 (SCM물류 수동)`,'manual','SCM물류');closeM();render();toast('어제 값으로 확정했습니다. 작업 로그에 수동 처리로 남았습니다');},
+  skuFix:f=>{const r=rawRow(f);const g=r.sku.replace(/-1(\d)$/,'-0$1');modal(`SKU 고치기 · ${f.target}`,`<div class="stack"><p>파일의 SKU <b class="mono">${esc(r.sku)}</b>는 기준정보에 없습니다. 올바른 SKU를 고르면 같은 검증을 거쳐 자동으로 반영합니다.</p>
+    <label class="f">올바른 SKU<input id="fxSku" list="fxSkuList" value="${S.skuMap[g]?g:''}"></label><datalist id="fxSkuList">${S.skus.map(s=>`<option value="${s.sku}">${esc(s.name)}</option>`).join('')}</datalist>
+    <p class="muted">추천: ${S.skuMap[g]?`<span class="mono">${g}</span> (${esc(S.skuMap[g].name)}) · 숫자 1↔0 오타로 보입니다`:'없음'}</p>
+    <div class="row"><span class="sp"></span><button class="primary" data-fixgo="${f.id}|skuFix">고치고 다시 반영</button></div></div>`);},
+  rowDrop:f=>{const a=S.osRaw[f.data.c];const i=a.findIndex(r=>r.id===f.data.rid);const r=a[i];a.splice(i,1);runCollect();resolveFail(f.id,`${r.sku} ${fmt(r.qty)}개 행을 빼고 확정, 3PL에 정정 요청 (SCM물류 수동)`,'manual','SCM물류');closeM();render();toast('이 행을 빼고 확정했습니다');},
+  sgRetry:f=>{closeM();pullSrc('sg').then(()=>{resolveFail(f.id,'담당자가 포털에 다시 로그인한 뒤 다시 수집, 검증 통과','retry','SCM물류');render();});},
+  sgUpload:f=>{const x=srcById('sg');x.last=S.clock;x.status='정상';resolveFail(f.id,'포털에서 직접 내려받은 파일을 올림 → 검증 통과 48행 반영 (SCM물류 수동)','manual','SCM물류');closeM();render();toast('직접 올린 파일로 반영했습니다');},
+  cutRetry:f=>{const cut=doCut(f.data.list,f.data.id);resolveFail(f.id,`다시 전송 성공 · ${f.data.list.length}건`,'retry','SCM물류');render();
+    modal(`3PL 보류 지시 파일 · ${f.data.id}`,`<p>다시 전송했습니다. ${cut} 마감분 ${f.data.list.length}건.</p>`,batchCSV(f.data.list));},
+  cutManual:f=>{doCut(f.data.list,f.data.id,'수동 메일 전달');resolveFail(f.id,`전송 파일을 내려받아 3PL에 메일로 직접 보냄 · ${f.data.list.length}건 (SCM물류 수동)`,'manual','SCM물류');render();
+    modal(`3PL 보류 지시 파일 · ${f.data.id} (수동 전달)`,'<p>이 내용을 3PL 양식 엑셀로 내려받아 메일로 보내세요. 보낸 것으로 기록했습니다.</p>',batchCSV(f.data.list));},
+  resPartial:f=>{const q=f.data.req;const a=Math.floor(requestable(q.sku)/10)*10;if(a<10){toast('지금은 요청 가능 수량이 없습니다');return;}
+    const r=reserve({...q,qty:a});closeM();if(r.ok){resolveFail(f.id,`${fmt(a)}개로 줄여 다시 요청 → ${r.id} 예약확정`,'fix',q.by);alog({area:'보류',action:'보류 요청',target:`${r.id} ${q.sku} ${a}개`,ok:true,who:q.by,reason:'줄인 수량으로 재요청'});}
+    S.holdSku=q.sku;render();toast(r.ok?`${r.id} ${fmt(a)}개 예약 확정`:'다시 실패했습니다. 작업 로그를 보세요');},
+  resOther:f=>{resolveFail(f.id,'요청을 접고 다른 색상·로트를 찾기로 함 (요청자)','manual',f.data.req.by);closeM();S.q=f.data.req.sku.slice(0,5);go('stock');},
+};
+const FIXGO={
+  aeUpload:f=>{if($('#fxFile').value==='bad'){alog({area:'수집',action:'UAE 3PL 파일 직접 올리기',target:'AE_stock_20261109(구양식).xls',ok:false,who:'SCM물류',reason:'형식 검증 실패: 필수 컬럼(SKU, 수량) 없음 → 반영 안 함',fid:f.id});toast('형식 검증에 걸려 반영하지 않았습니다: 필수 컬럼(SKU, 수량)이 없습니다. 3PL 양식 파일을 받아 다시 올리세요');render();return;}
+    const C=S.countries.find(c=>c.c==='AE');C.file='AE_stock_20261109.xlsx (수동 업로드)';C.at=S.clock;S.osRaw.AE.forEach(r=>{r.prev=r.qty;});runCollect();
+    const x=srcById('ae');x.status='정상';x.last=S.clock;x.rows=S.osRaw.AE.length;
+    resolveFail(f.id,`SCM물류가 받은 파일을 직접 올림 → 형식·의미·업무 검증 통과, ${S.osRaw.AE.length}행 자동 반영`,'fix','SCM물류');closeM();render();toast('UAE 파일이 검증을 통과해 반영됐습니다. 이제 오늘 기준입니다');},
+  rowFix:f=>{const v=$('#fxQty').value;const n=Number(v);if(v===''||!Number.isInteger(n)||n<0){alog({area:'수집',action:`${f.target} 수량 고치기`,target:`입력값 ${v||'(빈 값)'}`,ok:false,who:'SCM물류',reason:'의미 검증 실패: 0 이상의 정수가 아님 → 반영 안 함',fid:f.id});render();toast('0 이상의 정수만 넣을 수 있습니다. 반영하지 않았습니다');return;}
+    const r=rawRow(f);const old=r.qty;r.qty=n;runCollect();resolveFail(f.id,`수량 ${old} → ${fmt(n)} 수정 후 검증 통과, 자동 반영`,'fix','SCM물류');closeM();render();toast('고친 값으로 반영했습니다');},
+  skuFix:f=>{const v=$('#fxSku').value.trim();if(!S.skuMap[v]){alog({area:'수집',action:`${f.target} SKU 고치기`,target:`입력값 ${v||'(빈 값)'}`,ok:false,who:'SCM물류',reason:'의미 검증 실패: 기준정보에 없는 SKU → 반영 안 함',fid:f.id});render();toast('기준정보에 있는 SKU만 고를 수 있습니다. 반영하지 않았습니다');return;}
+    const r=rawRow(f);const old=r.sku;r.sku=v;runCollect();resolveFail(f.id,`SKU ${old} → ${v} 수정 후 검증 통과, ${fmt(r.qty)}개 자동 반영`,'fix','SCM물류');closeM();render();toast('고친 SKU로 반영했습니다');},
+};
 const srcById=id=>S.sources.find(x=>x.id===id);
 const hm=t=>{const[h,m]=t.split(':').map(Number);return h*60+m};
 const hmS=n=>`${p2(Math.floor(n/60)%24)}:${p2(n%60)}`;
@@ -365,11 +445,11 @@ function runCollect(){
   S.osStock={};S.osStale={};
   S.countries.forEach(C=>{
     if(!C.file){S.osStock[C.c]=Object.fromEntries(S.osRaw[C.c].map(r=>[r.sku,r.prev]));S.osStale[C.c]=true;
-      files.push({src:C.n+' 3PL',c:C.c,file:null,at:null,rows:0,accepted:0,status:'미수신',issues:[{lv:'업무',msg:`예정 시각 07:30까지 파일 미수신. 어제 검증본(${C.lastFile}, ${C.last})을 그대로 쓰고 '어제 기준'으로 표시`}]});return;}
+      files.push({src:C.n+' 3PL',c:C.c,file:null,at:null,rows:0,accepted:0,status:'미수신',issues:[{lv:'업무',msg:`예정 시각 07:30까지 파일 미수신. 어제 검증본(${C.lastFile}, ${C.last})을 그대로 쓰고 '어제 기준'으로 표시`,fid:'f-ae'}]});return;}
     const st={};const issues=[];let acc=0;
     S.osRaw[C.c].forEach(r=>{
-      if(!S.skuMap[r.sku]){issues.push({lv:'의미',msg:`${r.row}행 미등록 SKU '${r.sku}' ${fmt(r.qty)}개 → 격리, 코드 확인 요청`,q:true});return;}
-      if(r.qty<0){issues.push({lv:'의미',msg:`${r.row}행 ${r.sku} 수량 ${r.qty} (음수) → 격리, 어제 값 ${fmt(r.prev)} 유지`,q:true});st[r.sku]=r.prev;return;}
+      if(!S.skuMap[r.sku]){issues.push({lv:'의미',msg:`${r.row}행 미등록 SKU '${r.sku}' ${fmt(r.qty)}개 → 격리, 코드 확인 요청`,q:true,fid:`f-${C.c}-${r.id}`,kind:'sku',row:r.row,sku:r.sku,qty:r.qty,prev:r.prev,rid:r.id});return;}
+      if(r.qty<0){issues.push({lv:'의미',msg:`${r.row}행 ${r.sku} 수량 ${r.qty} (음수) → 격리, 어제 값 ${fmt(r.prev)} 유지`,q:true,fid:`f-${C.c}-${r.id}`,kind:'neg',row:r.row,sku:r.sku,qty:r.qty,prev:r.prev,rid:r.id});st[r.sku]=r.prev;return;}
       if(r.prev>=300&&r.qty<r.prev*.3)issues.push({lv:'업무',msg:`${r.row}행 ${r.sku} 어제 ${fmt(r.prev)} → 오늘 ${fmt(r.qty)} (−${Math.round((1-r.qty/r.prev)*100)}%). 반영했지만 확인 필요`});
       st[r.sku]=r.qty;acc++;});
     S.osStock[C.c]=st;
@@ -377,6 +457,7 @@ function runCollect(){
     files.push({src:C.n+' 3PL',c:C.c,file:C.file,at:C.at,rows:S.osRaw[C.c].length,accepted:acc,status:q?'일부 격리':issues.length?'경고':'정상',issues});
   });
   S.files=files;
+  if(S.fails)syncFails();
 }
 function osTotal(sku){return sum(S.countries,C=>S.osStock[C.c][sku]||0)}
 
@@ -419,6 +500,7 @@ function exceptions(){
   settleRows().filter(r=>r.state!=='일치').forEach(r=>ex.push({id:'set-'+r.code,area:'S3 정산',title:`H&B 체인 A ${r.state}`,detail:r.state==='매핑 필요'?`채널코드 ${r.code} '${r.name}'`:`${r.mapped} 채널 ${fmt(r.chQty)} vs 출고 ${fmt(r.ours)} (${r.diff>0?'+':''}${r.diff})`,owner:'국내영업',due:'11/12',go:'settle'}));
   S.channels.filter(c=>c.diff).forEach(c=>ex.push({id:'ch-'+c.id,area:'L4 채널',title:`${c.name} 재고 차이`,detail:`추정 ${fmt(c.est)} vs 채널 보고 ${fmt(c.reported)} (${c.diff})`,owner:'SCM 물류',due:'11/13',go:'channel'}));
   S.lots.filter(l=>l.cost==null).forEach(l=>ex.push({id:'cost-'+l.lot,area:'A2 원가',title:'신규 로트 원가 미확정',detail:`${l.sku} 로트 ${l.lot}`,owner:'구매',due:'11/14',go:'close'}));
+  Object.values(S.fails).filter(f=>!f.resolved&&!f.l1).forEach(f=>ex.push({id:'fail-'+f.id,area:'실패 작업',title:`${f.action} 실패`,detail:`${f.target} · ${f.reason}`,owner:f.owner,due:'오늘',go:'log'}));
   S.res.filter(r=>r.status==='반영확인'&&r.end<=fmtD(addDays(TODAY,1))).forEach(r=>ex.push({id:'exp-'+r.id,area:'S2 보류',title:`${r.id} 보류 만료 임박`,detail:`${r.sku} ${fmt(r.qty)}개 · 종료 ${r.end}. 해제 또는 연장`,owner:'국내영업',due:r.end,go:'hold'}));
   return ex;
 }
@@ -432,7 +514,7 @@ $('#mClose').onclick=()=>$('#modal').hidden=true;
 $('#modal').addEventListener('click',e=>{if(e.target.id==='modal')$('#modal').hidden=true;});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')$('#modal').hidden=true;});
 const pill=(t,c)=>`<span class="pill ${c}">${esc(t)}</span>`;
-const stPill=s=>pill(s,{정상:'good',통과:'good',일치:'good',적정:'good',반영확인:'good','일부 격리':'bad',미수신:'bad',불가:'bad','폐기 위험':'bad','수량 차이':'bad',반려:'bad',경고:'warn','로트 지정':'warn',주의:'warn','매핑 필요':'warn','긴급 승인 대기':'warn',예약확정:'acc',전송완료:'info',해제:'mute'}[s]||'mute');
+const stPill=s=>pill(s,{정상:'good',통과:'good',일치:'good',적정:'good',반영확인:'good','일부 격리':'bad',미수신:'bad',불가:'bad','폐기 위험':'bad','수량 차이':'bad',반려:'bad',경고:'warn','로트 지정':'warn',주의:'warn','매핑 필요':'warn','긴급 승인 대기':'warn',예약확정:'acc',전송완료:'info',해제:'mute',실패:'bad',성공:'good','부분 반영':'warn','수정 후 반영':'good','수동 처리':'info','재시도 성공':'good','처리 완료':'good'}[s]||'mute');
 const remPill=m=>pill(`${m.toFixed(1)}개월`,m<6?'bad':m<12?'warn':'good');
 const chName=id=>S.chMap[id]?S.chMap[id].name:id;
 const toCSV=rows=>rows.map(r=>r.map(v=>{const s=String(v??'');return/[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}).join(',')).join('\n');
@@ -447,10 +529,11 @@ V.home=()=>{
   return `<h1>오늘 현황 · 11월 9일 월요일</h1>
   <p class="lead">아침 수집과 검증이 끝났습니다. 숫자는 모두 같은 검증본에서 계산합니다. 처리할 일은 예외 처리함에 담당 부서와 기한이 붙어 있습니다.</p>
   <div class="tiles">
-    <div class="tile ${recv<S.files.length?'alert':''}"><span class="k">3PL 파일 수신</span><span class="v">${recv} / ${S.files.length}</span><span class="s">UAE 미수신 → 어제 기준 사용</span></div>
+    <div class="tile ${recv<S.files.length?'alert':''}"><span class="k">3PL 파일 수신</span><span class="v">${recv} / ${S.files.length}</span><span class="s">${recv<S.files.length?'UAE 미수신 → 어제 기준 사용':'모두 오늘 기준'}</span></div>
     <div class="tile alert"><span class="k">예외 처리함</span><span class="v">${open.length}건</span><span class="s">전체 ${ex.length}건 중 미처리</span></div>
     <div class="tile"><span class="k">3PL 전송 대기 보류</span><span class="v">${res}건</span><span class="s">다음 마감 ${S.nextCut}</span></div>
     <div class="tile"><span class="k">출고 검사 통과</span><span class="v">${pass} / ${S.orders.length}</span><span class="s">나머지는 로트 지정·불가</span></div>
+    <div class="tile ${Object.values(S.fails).some(f=>!f.resolved)?'alert':''}"><span class="k">실패한 작업</span><span class="v">${Object.values(S.fails).filter(f=>!f.resolved).length}건</span><span class="s">반영 안 함 · M2 작업 로그에서 고치기</span></div>
     <div class="tile"><span class="k">원가 미확정 로트</span><span class="v">${S.lots.filter(l=>l.cost==null).length}개</span><span class="s">구매에 요청 필요</span></div>
   </div>
   <div class="grid home-grid">
@@ -476,7 +559,7 @@ V.collect=()=>`<h1>L1 재고 수집·검증</h1>
     <div class="row"><b>${esc(f.src)}</b><span class="sp"></span>${stPill(f.status)}</div>
     <div class="mono muted">${f.file?esc(f.file)+' · '+f.at+' 수신':'파일 없음'}</div>
     <div class="row" style="gap:16px"><span>행 <b class="mono">${fmt(f.rows)}</b></span><span>반영 <b class="mono">${fmt(f.accepted)}</b></span><span>${f.lot?pill('로트·유효기간 있음','good'):pill('SKU 수량만','mute')}</span></div>
-    ${f.issues.length?`<div>${f.issues.map(i=>`<div class="issue">${pill(i.lv,i.lv==='업무'?'warn':'bad')}<span>${esc(i.msg)}</span></div>`).join('')}</div>`:'<div class="muted">이상 없음</div>'}
+    ${f.issues.length?`<div>${f.issues.map(i=>`<div class="issue">${pill(i.lv,i.lv==='업무'?'warn':'bad')}<span>${esc(i.msg)}</span>${i.fid&&S.fails[i.fid]&&!S.fails[i.fid].resolved?`<span class="sp"></span><button class="sm" data-showfail="${i.fid}">고치기</button>`:''}</div>`).join('')}</div>`:'<div class="muted">이상 없음</div>'}
   </div>`).join('')}</div>
   <div class="grid g3" style="margin-top:14px">
     <div class="note"><b>형식 검증</b> · 필수 컬럼·자료형. 실패 시 파일 전체 반영 중단</div>
@@ -672,29 +755,63 @@ V.sources=()=>{
     <span class="muted">지금 수집은 1~2분 안에 반영되고, 화면마다 기준 시각이 바뀝니다</span>
   </div>
   <div class="tw"><table><thead><tr><th>원천 시스템</th><th>가져오는 데이터</th><th>연결 방식 (1단계 → 확장)</th><th>수집 방식</th><th>마지막</th><th>다음</th><th>상태</th><th></th></tr></thead><tbody>
-  ${S.sources.map(x=>`<tr><td><b>${esc(x.sys)}</b><br><span class="muted">${esc(x.dir)}</span></td><td class="wrap">${esc(x.data)}</td><td>${mPill(x.m)}${x.next!=='—'?` <span class="muted">→ ${esc(x.next)}</span>`:''}</td><td>${esc(srcMode(x))}</td><td class="mono">${esc(x.last)}</td><td class="mono">${esc(srcNext(x))}</td><td>${S.busy===x.id?pill('수집 중…','info'):stPill(x.status)}</td><td>${x.pull?`<button class="sm" data-pull="${x.id}">지금 수집</button>`:'<span class="muted">자동만</span>'}</td></tr>`).join('')}
+  ${S.sources.map(x=>`<tr><td><b>${esc(x.sys)}</b><br><span class="muted">${esc(x.dir)}</span></td><td class="wrap">${esc(x.data)}</td><td>${mPill(x.m)}${x.next!=='—'?` <span class="muted">→ ${esc(x.next)}</span>`:''}</td><td>${esc(srcMode(x))}</td><td class="mono">${esc(x.last)}</td><td class="mono">${esc(srcNext(x))}</td><td>${S.busy===x.id?pill('수집 중…','info'):stPill(x.status)}${(()=>{const f=Object.values(S.fails).find(f=>!f.resolved&&f.area==='수집'&&(f.id==='f-ae'&&x.id==='ae'||f.id.startsWith('f-sg')&&x.id==='sg'));return f?` <button class="sm" data-showfail="${f.id}">고치기</button>`:''})()}</td><td>${x.pull?`<button class="sm" data-pull="${x.id}">지금 수집</button>`:'<span class="muted">자동만</span>'}</td></tr>`).join('')}
   </tbody></table></div>
   <div class="grid g3" style="margin-top:14px">
     <div class="note"><b>API</b> · 원천이 API를 주면 n분마다 조회하고, 버튼으로 즉시 조회합니다. 보류·출고 지시처럼 쓰기가 필요한 곳도 API로 보냅니다</div>
     <div class="note"><b>파일 자동 수신</b> · SFTP·전용 메일함·공유 폴더에 파일이 들어오면 바로 검증합니다. 예정 시각까지 안 오면 재송부 요청을 보냅니다</div>
     <div class="note acc"><b>크롬 확장</b> · 웹 화면만 있는 시스템은 담당자 로그인 상태에서 확장이 내려받기·양식 입력을 대신합니다. API가 생기면 바꿉니다</div>
   </div>
-  <h2 style="margin-top:18px">수집 기록</h2>
+  <h2 style="margin-top:18px">수집 기록 <span class="muted" style="font-size:13px;font-weight:400">· 모든 작업 기록은 <a href="#log">M2 작업 로그</a></span></h2>
   <div class="tw"><table><thead><tr><th>시각</th><th>원천</th><th>결과</th></tr></thead><tbody>
   ${S.srcLog.slice(0,12).map(l=>`<tr><td class="mono">${l.at}</td><td>${esc(srcById(l.id).sys)}</td><td class="wrap">${esc(l.msg)}</td></tr>`).join('')}
   </tbody></table></div>`;
+};
+V.log=()=>{
+  const L=S.actlog;const open=Object.values(S.fails).filter(f=>!f.resolved);
+  const F=S.logF,A=S.logA;
+  const rows=L.filter(e=>(F==='all'||(F==='fail'&&e.result==='실패')||(F==='open'&&e.fid&&S.fails[e.fid]&&!S.fails[e.fid].resolved&&e.result==='실패')||(F==='fixed'&&['수정 후 반영','수동 처리','재시도 성공'].includes(e.result)))&&(!A||e.area===A));
+  const areas=[...new Set(L.map(e=>e.area))];
+  return `<h1>M2 작업 로그</h1>
+  <p class="lead">수집이든 보류·전송이든 허브에서 일어난 모든 작업을 시각·작업자·결과·원인과 함께 남깁니다. 실패한 작업은 반영하지 않고(직전 상태 유지), 작업한 사람에게 바로 원인을 알립니다. 고쳐서 자동으로 다시 돌리거나, 사람이 직접 처리할 수 있고, 그 처리도 기록됩니다.</p>
+  <div class="tiles">
+    <div class="tile"><span class="k">오늘 작업</span><span class="v">${L.length}건</span><span class="s">자동 ${L.filter(e=>e.who.startsWith('시스템')).length} · 사람 ${L.filter(e=>!e.who.startsWith('시스템')).length}</span></div>
+    <div class="tile"><span class="k">성공</span><span class="v">${L.filter(e=>e.result==='성공'||e.result==='부분 반영').length}건</span><span class="s">부분 반영 ${L.filter(e=>e.result==='부분 반영').length}건 포함</span></div>
+    <div class="tile ${open.length?'alert':''}"><span class="k">실패 · 미해결</span><span class="v">${open.length}건</span><span class="s">반영 안 함 · 담당자에게 알림</span></div>
+    <div class="tile"><span class="k">고쳐서 처리</span><span class="v">${L.filter(e=>['수정 후 반영','수동 처리','재시도 성공'].includes(e.result)).length}건</span><span class="s">수정 후 반영 · 재시도 · 수동 처리</span></div>
+  </div>
+  ${open.length?`<div class="card stack" style="margin-bottom:14px"><h2 style="margin:0">고쳐야 할 실패 ${open.length}건</h2>${open.map(f=>`<div class="issue">${stPill('실패')}<span><b>${esc(f.action)}</b> · ${esc(f.target)}<br><span class="muted">${esc(f.reason)} · 알림: ${esc(f.owner)}</span></span><span class="sp"></span><button class="sm primary" data-showfail="${f.id}">고치기</button></div>`).join('')}</div>`:''}
+  <div class="row" style="margin-bottom:10px;gap:10px;flex-wrap:wrap"><select id="logF">${[['all','전체'],['fail','실패만'],['open','미해결 실패'],['fixed','고쳐서 처리한 것']].map(([v,t])=>`<option value="${v}" ${F===v?'selected':''}>${t}</option>`).join('')}</select>
+    <select id="logA"><option value="">모든 영역</option>${areas.map(a=>`<option ${A===a?'selected':''}>${esc(a)}</option>`).join('')}</select><span class="muted">${rows.length}건</span></div>
+  <div class="tw"><table><thead><tr><th>시각</th><th>작업자</th><th>영역</th><th>작업</th><th>대상</th><th>결과</th><th>원인 · 처리 내용</th><th></th></tr></thead><tbody>
+  ${rows.map(e=>`<tr><td class="mono">${e.at}</td><td>${esc(e.who)}</td><td>${esc(e.area)}</td><td class="wrap">${esc(e.action)}</td><td class="wrap mono" style="font-size:12px">${esc(e.target)}</td><td>${stPill(e.result)}</td><td class="wrap">${esc(e.reason)}</td><td>${e.fid&&S.fails[e.fid]?`<button class="sm" data-showfail="${e.fid}">${S.fails[e.fid].resolved?'내용':'고치기'}</button>`:''}</td></tr>`).join('')}
+  </tbody></table></div>
+  <div class="grid g3" style="margin-top:14px">
+    <div class="note"><b>실패하면 반영하지 않음</b> · 일부만 들어가는 일이 없도록 작업 단위로 처리하고, 직전 검증본·직전 상태를 유지합니다</div>
+    <div class="note"><b>작업한 사람에게 바로 알림</b> · 원인과 지금 상태를 보여 주고, 자동 작업이면 담당 부서에 알립니다</div>
+    <div class="note acc"><b>고치는 길 두 가지</b> · 값을 고쳐 같은 검증으로 자동 재실행하거나, 사람이 직접 처리하고 기록을 남깁니다</div>
+  </div>`;
 };
 function pullSrc(id,quiet){
   const x=srcById(id);S.busy=id;render();
   return new Promise(res=>setTimeout(()=>{
     let msg;
-    if(id==='ae'){msg='메일함 확인: 파일 여전히 미도착 → 재송부 요청 재발송, 어제 기준 유지';}
-    else{x.last=S.clock;
+    if(id==='ae'&&S.fails['f-ae']&&!S.fails['f-ae'].resolved){msg='메일함·SFTP 확인: 파일 여전히 미도착 → 반영 안 함, 어제 기준 유지';
+      alog({area:'수집',action:'UAE 3PL 지금 수집',target:'메일함·SFTP',ok:false,who:quiet?'시스템(자동)':'SCM물류',reason:'파일 미도착 → 반영 안 함 (어제 기준 유지)',fid:'f-ae'});
+      S.srcLog.unshift({at:S.clock,id,msg});S.busy=null;render();if(!quiet)showFail('f-ae');res(false);return;}
+    if(id==='sg'&&S.flags.sgFail){S.flags.sgFail=false;x.status='실패';const fid='f-sg-'+(++S.fseq);
+      fail({id:fid,area:'수집',action:'싱가포르 3PL 지금 수집',target:'SG 3PL 포털 (크롬 확장)',owner:'SCM물류',who:quiet?'시스템(자동)':'SCM물류',
+        reason:'포털 로그인 세션이 만료돼 크롬 확장이 재고 화면 대신 로그인 화면을 받았습니다.',
+        impact:'아무것도 반영하지 않았습니다. 싱가포르 재고는 07:30 검증본을 그대로 씁니다.',
+        fixes:[{key:'sgRetry',label:'포털에 다시 로그인했어요 → 다시 수집',kind:'retry'},{key:'sgUpload',label:'포털에서 직접 내려받은 파일 올리기',kind:'manual'}]},!quiet);
+      S.srcLog.unshift({at:S.clock,id,msg:'포털 세션 만료 → 반영 안 함'});S.busy=null;render();res(false);return;}
+    {x.last=S.clock;if(id==='sg')x.status='정상';
       if(id==='kr'){runCollect();S.collectRunAt=S.clock;msg=`로트 ${fmt(x.rows)}행 조회, 검증 통과 (지금 수집)`;}
       else if(id==='oms')msg=`주문 ${fmt(x.rows)}건 조회, 변경 없음 (지금 수집)`;
       else if(id==='gw')msg='결재 상태 3건 확인, 변경 없음 (지금 수집)';
       else msg=`${fmt(x.rows)}행 다시 받음, 검증 결과 변화 없음 (지금 수집)`;}
-    S.srcLog.unshift({at:S.clock,id,msg});S.busy=null;render();if(!quiet)toast(`${x.sys}: ${msg}`);res();},900));
+    alog({area:'수집',action:`${x.sys} ${quiet?'전체 수집':'지금 수집'}`,target:x.m,ok:true,who:'SCM물류',reason:msg.replace(' (지금 수집)','')});
+    S.srcLog.unshift({at:S.clock,id,msg});S.busy=null;render();if(!quiet)toast(`${x.sys}: ${msg}`);res(true);},900));
 }
 
 /* ---------- 라우팅·이벤트 ---------- */
@@ -715,46 +832,67 @@ document.addEventListener('input',e=>{
 document.addEventListener('change',e=>{
   if(e.target.id==='cat'){S.cat=e.target.value;render();}
   if(e.target.id==='short'){S.short=e.target.checked;render();}
-  if(e.target.id==='cycle'){const x=srcById('kr');x.every=+e.target.value;render();toast(`국내 WMS를 ${x.every}분마다 자동 수집합니다. 다음 수집 ${srcNext(x)}`);}
+  if(e.target.id==='logF'){S.logF=e.target.value;render();}
+  if(e.target.id==='logA'){S.logA=e.target.value;render();}
+  if(e.target.id==='cycle'){const x=srcById('kr');const old=x.every;x.every=+e.target.value;alog({area:'설정',action:'국내 WMS 자동 수집 주기 변경',target:`${old}분 → ${x.every}분`,ok:true,who:'AX팀'});render();toast(`국내 WMS를 ${x.every}분마다 자동 수집합니다. 다음 수집 ${srcNext(x)}`);}
 });
 document.addEventListener('submit',e=>{
   if(e.target.id!=='holdForm')return;e.preventDefault();
   const sku=$('#hSku').value.trim(),qty=+$('#hQty').value;
   if(!S.skuMap[sku]){toast('등록된 SKU를 고르세요');return;}
   if(!(qty>0)){toast('수량을 입력하세요');return;}
-  const r=reserve({sku,qty,ch:$('#hCh').value,purpose:$('#hPur').value||'—',end:$('#hEnd').value||'—',urgent:$('#hUrg').checked,by:'국내영업'});
-  S.holdSku=sku;render();
-  toast(r.ok?`${r.id} 예약 확정. 요청 가능 수량이 ${fmt(requestable(sku)+qty)} → ${fmt(requestable(sku))}개로 바로 줄었습니다`:`요청 가능 수량은 ${fmt(r.avail)}개입니다. ${fmt(r.avail)}개 이하로 요청하거나 다른 색상·로트를 확인하세요`);
+  const req={sku,qty,ch:$('#hCh').value,purpose:$('#hPur').value||'—',end:$('#hEnd').value||'—',urgent:$('#hUrg').checked,by:'국내영업'};
+  const r=reserve(req);
+  S.holdSku=sku;
+  if(r.ok){alog({area:'보류',action:'보류 요청',target:`${r.id} ${sku} ${fmt(qty)}개`,ok:true,who:'국내영업',reason:`요청 가능 ${fmt(requestable(sku)+qty)} → ${fmt(requestable(sku))}개`});render();
+    toast(`${r.id} 예약 확정. 요청 가능 수량이 ${fmt(requestable(sku)+qty)} → ${fmt(requestable(sku))}개로 바로 줄었습니다`);}
+  else{const a=Math.floor(r.avail/10)*10;render();
+    fail({id:'f-res-'+(++S.fseq),area:'보류',action:'보류 요청',target:`${sku} ${fmt(qty)}개`,owner:'요청자 (국내영업)',who:'국내영업',data:{req},
+      reason:`요청 수량 ${fmt(qty)}개가 지금 요청 가능 수량 ${fmt(r.avail)}개보다 많습니다.`,
+      impact:'예약하지 않았습니다. 요청 가능 수량과 다른 사람의 예약은 그대로입니다.',
+      fixes:[...(a>=10?[{key:'resPartial',label:`${fmt(a)}개로 줄여서 다시 요청`,kind:'auto'}]:[]),{key:'resOther',label:'요청을 접고 다른 색상·로트 찾기 (S1 재고 바로보기로)',kind:'manual'}]},true);}
 });
 document.addEventListener('click',e=>{
   const t=e.target.closest('button,tr.clickable');if(!t)return;const d=t.dataset;
   if(d.go){go(d.go);return;}
   if(d.pull){if(!S.busy)pullSrc(d.pull);return;}
-  if(d.done){S.done[d.done]=!S.done[d.done];render();return;}
+  if(d.done){S.done[d.done]=!S.done[d.done];alog({area:'예외 처리',action:S.done[d.done]?'처리 완료 표시':'처리 완료 되돌리기',target:d.done,ok:true,who:'담당자'});render();return;}
+  if(d.showfail){showFail(d.showfail);return;}
+  if(d.fix){const[id,k]=d.fix.split('|');FIX[k](S.fails[id]);return;}
+  if(d.fixgo){const[id,k]=d.fixgo.split('|');FIXGO[k](S.fails[id]);return;}
+  if(d.fixlater){closeM();toast('예외 처리함과 작업 로그에 남겨 두었습니다');return;}
   if(d.lin){e.stopPropagation();lineage(...d.lin.split('|'));return;}
   if(d.hold){S.holdSku=d.hold;go('hold');return;}
   if(t.matches('tr.clickable')){S.sel=S.sel===d.sku?null:d.sku;render();return;}
-  if(d.map){const[code,sku]=d.map.split('|');S.codeMap[code]=sku;S.history.unshift({at:'2026-11-09',item:'상품코드 매핑 · H&B 체인 A',change:`${code} → ${sku}`,by:'국내영업',src:'10월 매입 확정서'});render();toast(`매핑을 확정했습니다. 다음 달부터 ${code}는 자동으로 ${sku}로 바뀝니다`);return;}
-  if(d.approve){const r=S.res.find(x=>x.id===d.approve);r.status='전송완료';r.sent='긴급 건별';r.note='야간 작업비 발생 (금액: [₩__])';S.batches.push({id:'U-'+r.id,at:S.clock+' 긴급',n:1,list:[r]});render();toast(`${r.id} 비용 승인 후 3PL에 건별로 보냈습니다`);return;}
-  if(d.release){const r=S.res.find(x=>x.id===d.release);let n=r.qty;S.lots.filter(l=>l.sku===r.sku).forEach(l=>{const t2=Math.min(n,l.wmsHold);l.wmsHold-=t2;n-=t2;});r.status='해제';render();toast(`${r.id} 해제. ${fmt(r.qty)}개가 다시 요청 가능해졌습니다`);return;}
-  if(d.cancel){const r=S.res.find(x=>x.id===d.cancel);r.status='해제';r.note='3PL 전송 전 취소';render();toast(`${r.id} 취소. 3PL에는 보내지 않았습니다`);return;}
+  if(d.map){const[code,sku]=d.map.split('|');S.codeMap[code]=sku;S.history.unshift({at:'2026-11-09',item:'상품코드 매핑 · H&B 체인 A',change:`${code} → ${sku}`,by:'국내영업',src:'10월 매입 확정서'});alog({area:'정산',action:'상품코드 매핑 확정',target:`${code} → ${sku}`,ok:true,who:'국내영업',reason:'기준정보(M0)에 저장'});render();toast(`매핑을 확정했습니다. 다음 달부터 ${code}는 자동으로 ${sku}로 바뀝니다`);return;}
+  if(d.approve){const r=S.res.find(x=>x.id===d.approve);r.status='전송완료';r.sent='긴급 건별';r.note='야간 작업비 발생 (금액: [₩__])';S.batches.push({id:'U-'+r.id,at:S.clock+' 긴급',n:1,list:[r]});alog({area:'보류',action:'긴급 보류 비용 승인·건별 전송',target:r.id,ok:true,who:'SCM물류'});render();toast(`${r.id} 비용 승인 후 3PL에 건별로 보냈습니다`);return;}
+  if(d.release){const r=S.res.find(x=>x.id===d.release);let n=r.qty;S.lots.filter(l=>l.sku===r.sku).forEach(l=>{const t2=Math.min(n,l.wmsHold);l.wmsHold-=t2;n-=t2;});r.status='해제';alog({area:'보류',action:'보류 해제',target:`${r.id} ${r.sku} ${fmt(r.qty)}개`,ok:true,who:'국내영업'});render();toast(`${r.id} 해제. ${fmt(r.qty)}개가 다시 요청 가능해졌습니다`);return;}
+  if(d.cancel){const r=S.res.find(x=>x.id===d.cancel);r.status='해제';r.note='3PL 전송 전 취소';alog({area:'보류',action:'보류 취소',target:r.id,ok:true,who:'국내영업',reason:'3PL 전송 전'});render();toast(`${r.id} 취소. 3PL에는 보내지 않았습니다`);return;}
   if(d.batch){const b=S.batches.find(x=>x.id===d.batch);modal(`3PL 보류 지시 파일 · ${b.id}`,`<p class="muted">시연 화면에서는 파일 다운로드 대신 내용을 보여줍니다. 실제로는 3PL 양식 엑셀로 내려받습니다.</p>`,batchCSV(b.list));return;}
   switch(t.id){
-    case 'pullAll':{if(S.busy)break;(async()=>{for(const x of S.sources.filter(x=>x.pull))await pullSrc(x.id,true);toast('전체 수집 완료. UAE는 여전히 미수신이라 어제 기준을 씁니다');})();break;}
+    case 'pullAll':{if(S.busy)break;(async()=>{const bad=[];for(const x of S.sources.filter(x=>x.pull)){const ok=await pullSrc(x.id,true);if(!ok)bad.push(x.sys);}toast(bad.length?`전체 수집: 성공 ${S.sources.filter(x=>x.pull).length-bad.length}건 · 실패 ${bad.length}건 (${bad.join(', ')}). 실패 건은 반영하지 않았고, M2 작업 로그에서 고칠 수 있습니다`:'전체 수집 성공');})();break;}
     case 'runCol':{const el=$('#colProg');el.hidden=false;const steps=['국내 3PL WMS 재고 조회 (크롬 확장, 확장 단계에서 API)','해외 3PL 파일 4개 수신 확인 (SFTP·메일함·포털·API), UAE 미수신','형식 검증: 필수 컬럼·자료형','의미 검증: 미등록 SKU·음수 행 격리','업무 검증: 전일 대비 급변·미수신 경고','검증본 저장 → 전사 재고 갱신'];let i=0;el.innerHTML='';
-      const tick=()=>{if(i<steps.length){el.insertAdjacentHTML('beforeend',`<div>✓ ${steps[i]}</div>`);i++;setTimeout(tick,350);}else{runCollect();S.collectRunAt=S.clock;setTimeout(()=>{render();toast('수집·검증 완료. 격리 2행, 경고 2건은 예외 처리함으로 보냈습니다');},300);}};tick();break;}
+      const tick=()=>{if(i<steps.length){el.insertAdjacentHTML('beforeend',`<div>✓ ${steps[i]}</div>`);i++;setTimeout(tick,350);}else{runCollect();S.collectRunAt=S.clock;const q=S.files.reduce((t,f)=>t+f.issues.filter(i=>i.q).length,0);alog({area:'수집',action:'지금 수집·검증 (L1)',target:'국내·해외 3PL',result:q?'부분 반영':'성공',who:'SCM물류',reason:q?`격리 ${q}행은 반영 안 함 · 나머지 반영`:'모든 행 반영'});setTimeout(()=>{render();toast(q?`수집·검증 완료. 격리 ${q}행은 반영하지 않았습니다. 카드의 고치기에서 바로 고칠 수 있습니다`:'수집·검증 완료. 모든 행 반영');},300);}};tick();break;}
     case 'cutBtn':{const list=S.res.filter(r=>r.status==='예약확정');const id=`B-1109-${S.nextCut.slice(0,2)}`;
       if(!list.length){toast('이번 마감에 보낼 보류가 없습니다');S.clock=S.nextCut;S.nextCut=S.nextCut==='11:00'?'16:00':'내일 11:00';render();break;}
-      list.forEach(r=>{r.status='전송완료';r.sent=id;});S.batches.push({id,at:S.nextCut,n:list.length,list});S.clock=S.nextCut;S.nextCut=S.nextCut==='11:00'?'16:00':'내일 11:00';render();
+      if(S.flags.cutFail){S.flags.cutFail=false;
+        fail({id:'f-cut-'+(++S.fseq),area:'보류',action:`${S.nextCut} 마감 3PL 전송`,target:`${id} · ${list.length}건`,owner:'SCM물류',who:'SCM물류',data:{list,id},
+          reason:'3PL SFTP 접속 시간 초과(30초). 자동 재시도 3번도 모두 실패했습니다.',
+          impact:'아무것도 보내지 않았습니다. 보류는 모두 예약확정 그대로이고 요청 가능 수량도 바뀌지 않았습니다.',
+          fixes:[{key:'cutRetry',label:'다시 전송',kind:'retry'},{key:'cutManual',label:'전송 파일을 내려받아 3PL에 메일로 직접 보내기',kind:'manual'}]},true);render();break;}
+      const cut=doCut(list,id);alog({area:'보류',action:`${cut} 마감 3PL 전송`,target:`${id} · ${list.length}건`,ok:true,who:'SCM물류',reason:'SFTP 전송 완료'});render();
       modal(`3PL 보류 지시 파일 · ${id}`,`<p>${list.length}건을 한 번에 보냅니다. 건별 처리 대비 야간 작업 없음.</p>`,batchCSV(list));break;}
     case 'reflectBtn':{const list=S.res.filter(r=>r.status==='전송완료');const before=Object.fromEntries(list.map(r=>[r.sku,requestable(r.sku)]));
-      list.forEach(r=>{applyWmsHold(r.sku,r.qty);r.status='반영확인';});render();
+      if(!list.length){toast('반영 확인할 전송 건이 없습니다');break;}
+      list.forEach(r=>{applyWmsHold(r.sku,r.qty);r.status='반영확인';});alog({area:'보류',action:'WMS 보류 반영 확인',target:`${list.length}건`,ok:true,who:'SCM물류',reason:'다음 WMS 수집에서 보류 수량 일치 확인'});render();
       const sk=list[0].sku;toast(`WMS 반영 ${list.length}건 확인. 예: ${sk} 요청 가능 ${fmt(before[sk])} → ${fmt(requestable(sk))}개, 그대로라 이중 차감이 없습니다`);break;}
     case 'raceBtn':{const sku=($('#hSku')||{}).value&&S.skuMap[$('#hSku').value]?$('#hSku').value:'DD-LG-01';const r0=requestable(sku);
       if(r0<20){toast('이 SKU는 요청 가능 수량이 너무 적습니다. 다른 SKU를 고르세요');break;}
       const a=Math.ceil(r0*.7/10)*10,b=Math.ceil(r0*.6/10)*10;
       const ra=reserve({sku,qty:a,ch:'CH05',purpose:'동시 요청 시연 A',end:'2026-12-15',urgent:false,by:'국내영업 담당 A'});
       const rb=reserve({sku,qty:b,ch:'CH09',purpose:'동시 요청 시연 B',end:'2026-12-15',urgent:false,by:'해외팀 담당 B'});
+      alog({area:'보류',action:'보류 요청 (동시 요청 시연)',target:`${ra.id||''} ${sku} ${fmt(a)}개`,ok:ra.ok,who:'국내영업 담당 A',reason:ra.ok?'예약확정':'요청 가능 수량 부족'});
+      if(!rb.ok)alog({area:'보류',action:'보류 요청 (동시 요청 시연)',target:`${sku} ${fmt(b)}개`,ok:false,who:'해외팀 담당 B',reason:`먼저 들어온 요청이 잡아 요청 가능 ${fmt(rb.avail)}개만 남음 → 예약 안 함, 부분 예약 제안`});
       if(!rb.ok)S.res.push({id:'H-'+(++S.seq),sku,qty:b,ch:'CH09',purpose:'동시 요청 시연 B',end:'2026-12-15',urgent:false,status:'반려',at:S.clock,by:'해외팀 담당 B',note:`남은 ${fmt(rb.avail)}개까지 부분 예약 가능`});
       render();modal('동시 요청 시연',`<div class="stack"><p><b>${sku}</b> 요청 가능 ${fmt(r0)}개에 두 사람이 같은 시각에 요청했습니다.</p>
       <div class="issue">${stPill(ra.ok?'예약확정':'반려')}<span>국내영업 담당 A · ${fmt(a)}개 → ${ra.ok?ra.id+' 확정':'반려'}</span></div>
@@ -764,10 +902,13 @@ document.addEventListener('click',e=>{
       if(r.status==='통과')rows.push([o.no,chName(o.ch),o.sku,s.name,o.qty,'(FEFO)','']);
       else if(r.status==='로트 지정')r.alt.forEach(p=>rows.push([o.no,chName(o.ch),o.sku,s.name,p.qty,p.lot.lot,`채널 규정 ${S.chMap[o.ch].rule}개월 이상`]));
       else rows.push([o.no,chName(o.ch),o.sku,s.name,0,'','보류: '+r.reason]);});
+      alog({area:'출고',action:'3PL 출고 지시서 생성',target:`${S.orders.length}건`,ok:true,who:'SCM물류',reason:'로트 지정 4건 · 보류 1건 포함'});render();
       modal('3PL 출고 지시서 (로트 지정 포함)','<p class="muted">로트 지정 건은 FEFO 대신 지정 로트로 피킹하도록 3PL에 보냅니다.</p>',toCSV(rows));break;}
     case 'pkgBtn':{const rows=[['채널','거래유형','10월 출고수량','매출인식수량','매출액(추정)','기말 회사자산(원가)','근거']];S.channels.forEach(c=>{const q=c.type==='직매입'?c.shipOct:c.soldOct;rows.push([c.name,c.type,c.shipOct,q,q*c.price,c.type==='직매입'?'':Math.round(c.est*S.avgCost),c.type==='직매입'?'출고증빙·매입확정서':'정산서·L4 추정']);});
+      alog({area:'마감',action:'10월 마감 근거 묶음 생성',target:`채널 ${S.channels.length}곳`,ok:true,who:'회계'});render();
       modal('10월 마감 근거 묶음','<p class="muted">매출결의 첨부 양식 그대로 나갑니다. 크롬 확장(A3)이 이 값으로 그룹웨어 양식 칸을 채우고, 제출은 사람이 누릅니다.</p>',toCSV(rows));break;}
     case 'costReq':{const rows=[['로트','SKU','품명','제조일','입고수량','임시원가 제안','요청']];S.lots.filter(l=>l.cost==null).forEach(l=>{const s=S.skuMap[l.sku];rows.push([l.lot,l.sku,s.name,fmtD(l.mfg),l.onhand,s.cost,'확정 원가 회신 요청 (기한 11/14)']);});
+      alog({area:'원가',action:'원가 확정 요청 목록 생성',target:`로트 ${rows.length-1}개`,ok:true,who:'회계',reason:'구매에 요청'});render();
       modal('구매 원가 확정 요청 목록','',toCSV(rows));break;}
   }
 });
