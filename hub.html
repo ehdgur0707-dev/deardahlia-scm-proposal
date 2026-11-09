@@ -118,6 +118,7 @@ textarea.out{width:100%;min-height:240px;font-family:var(--mono);font-size:12px;
   nav.side a{white-space:nowrap;flex:none}
   main{padding-left:max(16px,env(safe-area-inset-left,0px))}
 }
+.muted a{color:var(--teal);font-weight:700}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 
@@ -140,6 +141,7 @@ textarea.out{width:100%;min-height:240px;font-family:var(--mono);font-size:12px;
     <a href="#close" data-v="close"><span class="code">A1</span>월마감·원가</a>
     <p class="grp">공통</p>
     <a href="#master" data-v="master"><span class="code">M0</span>기준정보</a>
+    <a href="#sources" data-v="sources"><span class="code">M1</span>연동·수집 관리</a>
   </nav>
   <main>
     <div class="topbar">
@@ -177,7 +179,7 @@ let S;
 /* ---------- 임의 데이터 생성 ---------- */
 function gen(){
   R=mulberry32(20261109);
-  S={seq:1104,clock:'09:40',nextCut:'11:00',batches:[],history:[],done:{},sel:null,collectRunAt:'08:30'};
+  S={seq:1104,clock:'09:40',nextCut:'11:00',batches:[],history:[],done:{},sel:null,collectRunAt:'09:30',srcLog:[]};
   const V4=['50ml','30ml','미니 10ml','리필'],V3=['200ml','100ml','리필'];
   const LINES=[
     {c:'LT',n:'글로우 틴트',cat:'립',b:'DD',k:10,moq:3000,cost:2100,lt:8,shelf:30,ct:'CT-TINT'},
@@ -310,8 +312,44 @@ function gen(){
     {at:'2026-10-28',item:'MOQ · 립 펜슬',change:'3,000 → 5,000',by:'구매',src:'OEM 견적서 10/27'},
     {at:'2026-10-15',item:'거래유형 · 해외 백화점 FR',change:'특정매입 → 위탁',by:'회계',src:'계약 변경 합의서'},
   ];
+  /* 연동 원천 (1단계 연결 방식과 확장 단계 목표) */
+  S.sources=[
+    {id:'kr',sys:'국내 3PL WMS',data:'로트별 재고·유효기간·보류',m:'크롬 확장',next:'WMS API',mode:'정기',every:30,last:'09:30',status:'정상',rows:296,dir:'읽기 · 보류 지시 쓰기(11·16시 배치)',pull:true},
+    {id:'us',sys:'미국 3PL',data:'SKU별 재고',m:'SFTP',next:'3PL API',mode:'도착',last:'06:40',status:'경고',rows:53,dir:'읽기',pull:true},
+    {id:'jp',sys:'일본 3PL',data:'SKU별 재고',m:'메일함',next:'SFTP',mode:'도착',last:'07:05',status:'일부 격리',rows:55,dir:'읽기',pull:true},
+    {id:'sg',sys:'싱가포르 3PL',data:'SKU별 재고',m:'크롬 확장',next:'3PL API',mode:'매일',at:'07:30',last:'07:30',status:'정상',rows:48,dir:'읽기',pull:true},
+    {id:'fr',sys:'프랑스 3PL',data:'SKU별 재고',m:'API',next:'—',mode:'정기',every:60,last:'06:55',status:'정상',rows:57,dir:'읽기',pull:true},
+    {id:'ae',sys:'UAE 3PL',data:'SKU별 재고',m:'메일함',next:'SFTP',mode:'도착',last:'11/08 07:20',status:'미수신',rows:0,dir:'읽기',pull:true},
+    {id:'oms',sys:'주문·송장 관리 솔루션',data:'주문·출고 지시·송장번호',m:'API',next:'—',mode:'정기',every:10,last:'09:40',status:'정상',rows:212,dir:'읽기 · 로트 지정 지시 쓰기',pull:true},
+    {id:'erp',sys:'ERP (회계 원장)',data:'원가·매입 확정·거래처',m:'파일 내보내기',next:'읽기 전용 DB 뷰',mode:'매일',at:'06:00',last:'06:00',status:'정상',rows:1840,dir:'읽기만 · 마감 자료는 업로드 양식 파일',pull:false},
+    {id:'gw',sys:'그룹웨어 (전자결재)',data:'긴급 보류 비용·매출결의 결재 상태',m:'크롬 확장',next:'결재 API·웹훅',mode:'이벤트',last:'11/08 17:20',status:'정상',rows:3,dir:'양식 채우기 · 제출은 사람',pull:true},
+    {id:'settle',sys:'채널 정산서 (12곳)',data:'매입 확정·판매·재고 보고',m:'크롬 확장',next:'대형 채널 EDI·API',mode:'주기',last:'11/03',status:'정상',rows:30,dir:'읽기',pull:true},
+    {id:'xls',sys:'공용 엑셀 (재고·보류·예측·수불부)',data:'과거 이력',m:'공유 폴더',next:'폐지',mode:'매일',at:'07:00',last:'07:00',status:'병행 중',rows:4,dir:'읽기 후 폐지',pull:false},
+  ];
+  S.srcLog=[
+    {at:'09:40',id:'oms',msg:'주문 212건 조회, 신규 출고 지시 3건'},
+    {at:'09:30',id:'kr',msg:'로트 296행 조회, 검증 통과'},
+    {at:'09:30',id:'oms',msg:'주문 209건 조회, 변경 없음'},
+    {at:'07:35',id:'ae',msg:'07:30 예정 파일 미도착 → 3PL에 재송부 요청 메일 자동 발송'},
+    {at:'07:30',id:'sg',msg:'포털에서 48행 내려받기, 검증 통과'},
+    {at:'07:05',id:'jp',msg:'메일 첨부 55행 수신, 2행 격리'},
+    {at:'06:55',id:'fr',msg:'API 57행 조회, 검증 통과'},
+    {at:'06:40',id:'us',msg:'SFTP 53행 수신, 급감 경고 1건'},
+    {at:'06:00',id:'erp',msg:'원가·매입 1,840행 내보내기 파일 수신'},
+  ];
   runCollect();
 }
+const srcById=id=>S.sources.find(x=>x.id===id);
+const hm=t=>{const[h,m]=t.split(':').map(Number);return h*60+m};
+const hmS=n=>`${p2(Math.floor(n/60)%24)}:${p2(n%60)}`;
+function srcNext(x){
+  if(x.mode==='정기'){let n=hm(x.last.slice(-5))+x.every;while(n<=hm(S.clock))n+=x.every;return hmS(n);}
+  if(x.mode==='도착')return x.status==='미수신'?'재송부 대기':'파일 도착 즉시';
+  if(x.mode==='매일')return '내일 '+x.at;
+  if(x.mode==='이벤트')return '결재 요청 시';
+  return '정산 주기별';
+}
+function srcMode(x){return x.mode==='정기'?`${x.every}분마다`:x.mode==='도착'?'도착 즉시 (07:30 마감)':x.mode==='매일'?`매일 ${x.at}`:x.mode==='이벤트'?'결재 요청 시 · 상태 30분 확인':'정산 주기별 도착 감지';}
 function newestLot(k){return S.lots.filter(l=>l.sku===k).sort((a,b)=>b.mfg-a.mfg)[0]}
 function applyWmsHold(sku,qty){let n=qty;S.lots.filter(l=>l.sku===sku).sort((a,b)=>b.exp-a.exp).forEach(l=>{if(n<=0)return;const t=Math.min(n,lotAvail(l));l.wmsHold+=t;n-=t;});}
 const lotAvail=l=>l.onhand-l.qc-l.alloc-l.wmsHold;
@@ -323,7 +361,7 @@ const requestable=sku=>wmsAvail(sku)-pendingRes(sku);
 /* ---------- L1 수집·검증 ---------- */
 function runCollect(){
   const files=[];
-  files.push({src:'국내 3PL',c:'KR',file:'KR_WMS_재고_20261109.xlsx',at:'07:12',rows:S.lots.length,accepted:S.lots.length,issues:[],status:'정상',lot:true});
+  files.push({src:'국내 3PL',c:'KR',file:'KR_WMS 재고 조회 (30분 자동)',at:'09:30',rows:S.lots.length,accepted:S.lots.length,issues:[],status:'정상',lot:true});
   S.osStock={};S.osStale={};
   S.countries.forEach(C=>{
     if(!C.file){S.osStock[C.c]=Object.fromEntries(S.osRaw[C.c].map(r=>[r.sku,r.prev]));S.osStale[C.c]=true;
@@ -432,7 +470,7 @@ V.home=()=>{
 
 V.collect=()=>`<h1>L1 재고 수집·검증</h1>
   <p class="lead">국내외 3PL 파일을 받아 형식 → 의미 → 업무 순서로 검사합니다. 통과한 행만 전사 재고에 들어가고, 나머지는 격리해 담당자에게 넘깁니다. 검증에 실패하면 직전 검증본을 유지합니다.</p>
-  <div class="row" style="margin-bottom:14px"><button class="primary" id="runCol">아침 수집 다시 실행</button><span class="muted">마지막 실행 ${S.collectRunAt} · 국내는 크롬 확장이 WMS에서 내려받고, 해외는 메일 첨부를 끌어다 놓는 방식(가정)</span></div>
+  <div class="row" style="margin-bottom:14px"><button class="primary" id="runCol">지금 수집·검증</button><span class="muted">마지막 실행 ${S.collectRunAt} · 국내 WMS는 ${srcById('kr').every}분마다 자동 수집, 해외 파일은 도착하는 즉시 검증 · 연결 방식은 <a href="#sources">M1 연동·수집 관리</a>에서 봅니다</span></div>
   <div id="colProg" class="card progress" hidden></div>
   <div class="grid g3" style="margin-top:4px">${S.files.map(f=>`<div class="card stack" style="gap:8px">
     <div class="row"><b>${esc(f.src)}</b><span class="sp"></span>${stPill(f.status)}</div>
@@ -458,7 +496,7 @@ V.stock=()=>{
     <input id="q" placeholder="SKU 또는 품명 검색" value="${esc(S.q||'')}" style="width:220px" aria-label="검색">
     <select id="cat" aria-label="카테고리"><option value="">전체 카테고리</option>${['립','베이스','아이','치크','스킨케어'].map(c=>`<option ${cat===c?'selected':''}>${c}</option>`).join('')}</select>
     <label class="row" style="gap:6px;font-size:13px"><input type="checkbox" id="short" ${S.short?'checked':''}> 1.5개월치 미만만</label>
-    <span class="sp"></span><span class="pill info">국내 07:12 수신 · 08:30 검증</span><span class="pill warn">UAE 어제 기준</span>
+    <span class="sp"></span><span class="pill info">국내 ${srcById('kr').last} 자동 수집 · ${srcById('kr').every}분 주기</span><span class="pill warn">UAE 어제 기준</span>
   </div>
   <div class="tw tall"><table><thead><tr><th>SKU</th><th>품명</th><th class="n">국내 실물</th><th class="n">품질보류·할당</th><th class="n">보류(WMS)</th><th class="n">내부 예약</th><th class="n">요청 가능</th><th class="n">해외 합계</th><th>판매 여유</th></tr></thead><tbody>
   ${rows.map(r=>`<tr class="clickable ${sel===r.s.sku?'sel':''}" data-sku="${r.s.sku}"><td class="mono">${r.s.sku}</td><td>${esc(r.s.name)}</td>
@@ -510,7 +548,7 @@ V.hold=()=>{
 };
 function lineage(kind,sku){let html='';
   if(kind==='oh'||kind==='wh'){const L=S.lots.filter(l=>l.sku===sku);
-    html=`<p>국내 3PL 검증본 <span class="mono">KR_WMS_재고_20261109.xlsx</span> · 07:12 수신 · ${S.collectRunAt} 검증</p><div class="tw"><table><thead><tr><th>파일 행</th><th>로트</th><th class="n">${kind==='oh'?'실물':'WMS 보류'}</th></tr></thead><tbody>${L.map(l=>`<tr><td class="mono">${l.row}행</td><td class="mono">${l.lot}</td><td class="n">${fmt(kind==='oh'?l.onhand:l.wmsHold)}</td></tr>`).join('')}</tbody></table></div>`;
+    html=`<p>국내 3PL 검증본 <span class="mono">KR_WMS 재고 조회</span> · ${S.collectRunAt} 자동 수집·검증</p><div class="tw"><table><thead><tr><th>파일 행</th><th>로트</th><th class="n">${kind==='oh'?'실물':'WMS 보류'}</th></tr></thead><tbody>${L.map(l=>`<tr><td class="mono">${l.row}행</td><td class="mono">${l.lot}</td><td class="n">${fmt(kind==='oh'?l.onhand:l.wmsHold)}</td></tr>`).join('')}</tbody></table></div>`;
     if(kind==='wh'){const rs=S.res.filter(r=>r.sku===sku&&r.status==='반영확인');html+=`<p class="muted" style="margin-top:10px">${rs.length?'이 수량을 만든 보류: '+rs.map(r=>`${r.id} ${fmt(r.qty)}개`).join(', '):'반영된 보류 없음'}</p>`;}}
   if(kind==='pr'){const rs=S.res.filter(r=>r.sku===sku&&PENDING.includes(r.status));
     html=`<p>아직 WMS에 반영되지 않은 내부 예약입니다.</p><div class="tw"><table><thead><tr><th>번호</th><th class="n">수량</th><th>상태</th><th>요청</th></tr></thead><tbody>${rs.map(r=>`<tr><td class="mono">${r.id}</td><td class="n">${fmt(r.qty)}</td><td>${stPill(r.status)}</td><td>${esc(r.by)} · ${r.at}</td></tr>`).join('')}</tbody></table></div>`;}
@@ -616,6 +654,49 @@ V.master=()=>`<h1>M0 기준정보</h1>
   ${S.history.map(h=>`<tr><td class="mono">${h.at}</td><td>${esc(h.item)}</td><td>${esc(h.change)}</td><td>${esc(h.by)}</td><td class="muted">${esc(h.src)}</td></tr>`).join('')}</tbody></table></div>
   <p class="muted" style="margin-top:8px">H&amp;B 체인 A 상품코드 매핑 ${Object.keys(S.codeMap).length}건 등록</p>`;
 
+const mPill=m=>pill(m,m==='API'?'good':m==='크롬 확장'?'acc':'info');
+V.sources=()=>{
+  const ok=S.sources.filter(x=>x.status==='정상').length;const bad=S.sources.filter(x=>x.status!=='정상'&&x.status!=='병행 중').length;
+  const auto=S.sources.filter(x=>x.mode==='정기').map(x=>({x,n:srcNext(x)})).sort((a,b)=>hm(a.n)-hm(b.n))[0];
+  return `<h1>M1 연동·수집 관리</h1>
+  <p class="lead">원천 시스템은 바꾸지 않고, 시스템마다 가능한 방식으로 데이터를 끌어옵니다. 어떤 방식으로 들어오든 같은 검증(형식 → 의미 → 업무)을 거쳐 허브에 들어갑니다. 연결 관리는 AX팀이 합니다.</p>
+  <div class="tiles">
+    <div class="tile"><span class="k">연결된 원천</span><span class="v">${S.sources.length}개</span><span class="s">API ${S.sources.filter(x=>x.m==='API').length} · 파일 자동 수신 ${S.sources.filter(x=>['SFTP','메일함','공유 폴더','파일 내보내기'].includes(x.m)).length} · 크롬 확장 ${S.sources.filter(x=>x.m==='크롬 확장').length}</span></div>
+    <div class="tile"><span class="k">정상</span><span class="v">${ok}개</span><span class="s">마지막 수집이 검증을 통과</span></div>
+    <div class="tile ${bad?'alert':''}"><span class="k">확인 필요</span><span class="v">${bad}개</span><span class="s">예외 처리함으로 넘어감</span></div>
+    <div class="tile"><span class="k">다음 자동 수집</span><span class="v">${auto.n}</span><span class="s">${esc(auto.x.sys)}</span></div>
+  </div>
+  <div class="row" style="margin-bottom:12px;flex-wrap:wrap;gap:10px">
+    <button class="primary" id="pullAll">전체 지금 수집</button>
+    <label class="row" style="gap:6px"><span class="muted">국내 WMS 자동 수집 주기</span><select id="cycle">${[10,30,60].map(n=>`<option value="${n}" ${srcById('kr').every===n?'selected':''}>${n}분</option>`).join('')}</select></label>
+    <span class="muted">지금 수집은 1~2분 안에 반영되고, 화면마다 기준 시각이 바뀝니다</span>
+  </div>
+  <div class="tw"><table><thead><tr><th>원천 시스템</th><th>가져오는 데이터</th><th>연결 방식 (1단계 → 확장)</th><th>수집 방식</th><th>마지막</th><th>다음</th><th>상태</th><th></th></tr></thead><tbody>
+  ${S.sources.map(x=>`<tr><td><b>${esc(x.sys)}</b><br><span class="muted">${esc(x.dir)}</span></td><td class="wrap">${esc(x.data)}</td><td>${mPill(x.m)}${x.next!=='—'?` <span class="muted">→ ${esc(x.next)}</span>`:''}</td><td>${esc(srcMode(x))}</td><td class="mono">${esc(x.last)}</td><td class="mono">${esc(srcNext(x))}</td><td>${S.busy===x.id?pill('수집 중…','info'):stPill(x.status)}</td><td>${x.pull?`<button class="sm" data-pull="${x.id}">지금 수집</button>`:'<span class="muted">자동만</span>'}</td></tr>`).join('')}
+  </tbody></table></div>
+  <div class="grid g3" style="margin-top:14px">
+    <div class="note"><b>API</b> · 원천이 API를 주면 n분마다 조회하고, 버튼으로 즉시 조회합니다. 보류·출고 지시처럼 쓰기가 필요한 곳도 API로 보냅니다</div>
+    <div class="note"><b>파일 자동 수신</b> · SFTP·전용 메일함·공유 폴더에 파일이 들어오면 바로 검증합니다. 예정 시각까지 안 오면 재송부 요청을 보냅니다</div>
+    <div class="note acc"><b>크롬 확장</b> · 웹 화면만 있는 시스템은 담당자 로그인 상태에서 확장이 내려받기·양식 입력을 대신합니다. API가 생기면 바꿉니다</div>
+  </div>
+  <h2 style="margin-top:18px">수집 기록</h2>
+  <div class="tw"><table><thead><tr><th>시각</th><th>원천</th><th>결과</th></tr></thead><tbody>
+  ${S.srcLog.slice(0,12).map(l=>`<tr><td class="mono">${l.at}</td><td>${esc(srcById(l.id).sys)}</td><td class="wrap">${esc(l.msg)}</td></tr>`).join('')}
+  </tbody></table></div>`;
+};
+function pullSrc(id,quiet){
+  const x=srcById(id);S.busy=id;render();
+  return new Promise(res=>setTimeout(()=>{
+    let msg;
+    if(id==='ae'){msg='메일함 확인: 파일 여전히 미도착 → 재송부 요청 재발송, 어제 기준 유지';}
+    else{x.last=S.clock;
+      if(id==='kr'){runCollect();S.collectRunAt=S.clock;msg=`로트 ${fmt(x.rows)}행 조회, 검증 통과 (지금 수집)`;}
+      else if(id==='oms')msg=`주문 ${fmt(x.rows)}건 조회, 변경 없음 (지금 수집)`;
+      else if(id==='gw')msg='결재 상태 3건 확인, 변경 없음 (지금 수집)';
+      else msg=`${fmt(x.rows)}행 다시 받음, 검증 결과 변화 없음 (지금 수집)`;}
+    S.srcLog.unshift({at:S.clock,id,msg});S.busy=null;render();if(!quiet)toast(`${x.sys}: ${msg}`);res();},900));
+}
+
 /* ---------- 라우팅·이벤트 ---------- */
 function render(){
   const v=(location.hash||'#home').slice(1);const view=V[v]?v:'home';
@@ -634,6 +715,7 @@ document.addEventListener('input',e=>{
 document.addEventListener('change',e=>{
   if(e.target.id==='cat'){S.cat=e.target.value;render();}
   if(e.target.id==='short'){S.short=e.target.checked;render();}
+  if(e.target.id==='cycle'){const x=srcById('kr');x.every=+e.target.value;render();toast(`국내 WMS를 ${x.every}분마다 자동 수집합니다. 다음 수집 ${srcNext(x)}`);}
 });
 document.addEventListener('submit',e=>{
   if(e.target.id!=='holdForm')return;e.preventDefault();
@@ -647,6 +729,7 @@ document.addEventListener('submit',e=>{
 document.addEventListener('click',e=>{
   const t=e.target.closest('button,tr.clickable');if(!t)return;const d=t.dataset;
   if(d.go){go(d.go);return;}
+  if(d.pull){if(!S.busy)pullSrc(d.pull);return;}
   if(d.done){S.done[d.done]=!S.done[d.done];render();return;}
   if(d.lin){e.stopPropagation();lineage(...d.lin.split('|'));return;}
   if(d.hold){S.holdSku=d.hold;go('hold');return;}
@@ -657,7 +740,8 @@ document.addEventListener('click',e=>{
   if(d.cancel){const r=S.res.find(x=>x.id===d.cancel);r.status='해제';r.note='3PL 전송 전 취소';render();toast(`${r.id} 취소. 3PL에는 보내지 않았습니다`);return;}
   if(d.batch){const b=S.batches.find(x=>x.id===d.batch);modal(`3PL 보류 지시 파일 · ${b.id}`,`<p class="muted">시연 화면에서는 파일 다운로드 대신 내용을 보여줍니다. 실제로는 3PL 양식 엑셀로 내려받습니다.</p>`,batchCSV(b.list));return;}
   switch(t.id){
-    case 'runCol':{const el=$('#colProg');el.hidden=false;const steps=['국내 3PL WMS 파일 내려받기 (크롬 확장)','해외 3PL 파일 4개 수신 확인, UAE 미수신','형식 검증: 필수 컬럼·자료형','의미 검증: 미등록 SKU·음수 행 격리','업무 검증: 전일 대비 급변·미수신 경고','검증본 저장 → 전사 재고 갱신'];let i=0;el.innerHTML='';
+    case 'pullAll':{if(S.busy)break;(async()=>{for(const x of S.sources.filter(x=>x.pull))await pullSrc(x.id,true);toast('전체 수집 완료. UAE는 여전히 미수신이라 어제 기준을 씁니다');})();break;}
+    case 'runCol':{const el=$('#colProg');el.hidden=false;const steps=['국내 3PL WMS 재고 조회 (크롬 확장, 확장 단계에서 API)','해외 3PL 파일 4개 수신 확인 (SFTP·메일함·포털·API), UAE 미수신','형식 검증: 필수 컬럼·자료형','의미 검증: 미등록 SKU·음수 행 격리','업무 검증: 전일 대비 급변·미수신 경고','검증본 저장 → 전사 재고 갱신'];let i=0;el.innerHTML='';
       const tick=()=>{if(i<steps.length){el.insertAdjacentHTML('beforeend',`<div>✓ ${steps[i]}</div>`);i++;setTimeout(tick,350);}else{runCollect();S.collectRunAt=S.clock;setTimeout(()=>{render();toast('수집·검증 완료. 격리 2행, 경고 2건은 예외 처리함으로 보냈습니다');},300);}};tick();break;}
     case 'cutBtn':{const list=S.res.filter(r=>r.status==='예약확정');const id=`B-1109-${S.nextCut.slice(0,2)}`;
       if(!list.length){toast('이번 마감에 보낼 보류가 없습니다');S.clock=S.nextCut;S.nextCut=S.nextCut==='11:00'?'16:00':'내일 11:00';render();break;}
