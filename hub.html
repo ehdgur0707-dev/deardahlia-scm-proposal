@@ -461,12 +461,31 @@ const ACCGO={
     alog({area:'계정',action:mode==='set'?'비밀번호 직접 설정':'비밀번호 초기화 (임시 발급)',target:`${u.name} (${u.id})`,ok:true,who:'AX팀',reason:(mode==='set'?'관리자가 설정':'첫 로그인 때 변경')+(wasLocked?' · 잠금 해제':'')});render();
     if(mode==='set'){closeM();toast(`${u.name} 비밀번호를 바꿨습니다`);}else showTemp(u,'비밀번호를 초기화했습니다');},
 };
+const ulabel=u=>`${u.name}(${u.dept})`;
+const isFail=e=>e.result==='실패';const isDeny=e=>e.area==='권한';const isFix=e=>['수정 후 반영','수동 처리','재시도 성공'].includes(e.result);
+function actView(){
+  const rows=S.users.map(u=>{const L=S.actlog.filter(e=>e.who===ulabel(u));return{u,L,n:L.length,ok:L.filter(e=>!isFail(e)).length,f:L.filter(e=>isFail(e)&&!isDeny(e)).length,d:L.filter(isDeny).length,fx:L.filter(isFix).length,last:L[0]?L[0].at:''};});
+  const sysN=S.actlog.filter(e=>e.who.startsWith('시스템')).length;const deptN=S.actlog.filter(e=>!e.who.includes('(')&&!e.who.startsWith('시스템')).length;
+  const sel=S.users.find(u=>u.id===S.actSel);const only=S.actOnly||'all';
+  const shown=rows.filter(r=>S.actAll||r.n>0);
+  let detail='';
+  if(sel){const L=S.actlog.filter(e=>e.who===ulabel(sel)).filter(e=>only==='all'||(only==='fail'&&isFail(e)&&!isDeny(e))||(only==='deny'&&isDeny(e))||(only==='edit'&&e.before!=null));
+    detail=`<div class="card stack" style="margin-top:14px"><div class="row"><h2 style="margin:0">${esc(sel.name)} · ${sel.dept} ${esc(sel.title)} · 오늘 활동</h2><span class="sp"></span>
+    <select id="actOnly">${[['all','전체'],['fail','실패만'],['deny','권한 없는 시도만'],['edit','재고 숫자를 바꾼 것만']].map(([v,t])=>`<option value="${v}" ${only===v?'selected':''}>${t}</option>`).join('')}</select></div>
+    <div class="tw"><table><thead><tr><th>시각</th><th>영역</th><th>작업</th><th>대상</th><th>결과</th><th>원인 · 변경</th></tr></thead><tbody>
+    ${L.map(e=>`<tr class="${isFail(e)?'ovrow':''}"><td class="mono">${e.at}</td><td>${esc(e.area)}</td><td class="wrap">${esc(e.action)}</td><td class="wrap mono" style="font-size:12px">${esc(e.target)}</td><td>${stPill(e.result)}</td><td class="wrap">${esc(e.reason)}${e.before!=null?`<br><span class="mono muted" style="font-size:12px">${e.sku} 요청 가능 ${fmt(e.before)} → ${fmt(e.after)}</span>`:''}</td></tr>`).join('')||'<tr><td colspan="6" class="muted">해당 기록이 없습니다</td></tr>'}
+    </tbody></table></div><p class="muted" style="margin:0">기록은 수정·삭제할 수 없습니다. 감사·인수인계 때 그대로 내보냅니다.</p></div>`;}
+  return `<div class="row" style="gap:10px;margin-bottom:10px;flex-wrap:wrap"><span class="muted">오늘 작업 ${S.actlog.length}건 · 자동 ${sysN}건 · 사람 ${S.actlog.length-sysN}건${deptN?` · 이름 없는 예전 부서 기록 ${deptN}건`:''}</span><span class="sp"></span>
+    <label class="row" style="gap:6px;font-size:13px"><input type="checkbox" id="actAll" ${S.actAll?'checked':''}> 활동 없는 계정도 보기</label></div>
+  <div class="tw"><table><thead><tr><th>이름</th><th>부서 · 직급</th><th class="n">오늘 작업</th><th class="n">성공</th><th class="n">실패</th><th class="n">권한 없는 시도</th><th class="n">고쳐서 처리</th><th>마지막 활동</th><th></th></tr></thead><tbody>
+  ${shown.map(r=>`<tr class="${sel&&sel.id===r.u.id?'selrow':''}"><td><b>${esc(r.u.name)}</b></td><td>${r.u.dept} · ${esc(r.u.title)}</td><td class="n">${r.n}</td><td class="n">${r.ok}</td><td class="n">${r.f?`<b style="color:var(--bad)">${r.f}</b>`:0}</td><td class="n">${r.d?`<b style="color:var(--warn)">${r.d}</b>`:0}</td><td class="n">${r.fx}</td><td class="mono">${r.last||'—'}</td><td><button class="sm" data-actuser="${r.u.id}">활동 보기</button></td></tr>`).join('')||'<tr><td colspan="9" class="muted">오늘 활동한 계정이 없습니다</td></tr>'}
+  </tbody></table></div>${detail}`;}
 function usersView(){const q=(S.accQ||'').trim();const D=S.accDept;
   const rows=S.users.filter(u=>(!D||u.dept===D)&&(!q||u.name.includes(q)||u.id.includes(q.toLowerCase())));
   const sel=S.users.find(u=>u.id===S.accSel)||rows[0];
   return `<div class="row" style="gap:10px;margin-bottom:10px;flex-wrap:wrap"><select id="accDept"><option value="">전체 부서</option>${DEPTS.map(d=>`<option ${D===d?'selected':''}>${d}</option>`).join('')}</select><input id="accQ" placeholder="이름·아이디 검색" value="${esc(q)}"><span class="muted">${rows.length}명</span></div>
   <div class="tw"><table><thead><tr><th>이름</th><th>부서 · 직급</th><th>아이디</th><th>상태</th><th>비밀번호</th><th>마지막 로그인</th><th>권한</th><th></th></tr></thead><tbody>
-  ${rows.map(u=>`<tr class="${sel&&u.id===sel.id?'selrow':''} ${u.status==='비활성'?'done':''}"><td><b>${esc(u.name)}</b>${u.id===S.me?' '+pill('나','acc'):''}</td><td>${u.dept} · ${esc(u.title)}</td><td class="mono">${u.id}</td><td>${stPill(u.status)}${u.lockNote?`<br><span class="muted" style="font-size:12px">${esc(u.lockNote)}</span>`:''}</td>
+  ${rows.map(u=>`<tr class="${sel&&u.id===sel.id?'selrow':''} ${u.status==='비활성'?'done':''}"><td><button class="lin" data-actuser="${u.id}"><b>${esc(u.name)}</b></button>${u.id===S.me?' '+pill('나','acc'):''}</td><td>${u.dept} · ${esc(u.title)}</td><td class="mono">${u.id}</td><td>${stPill(u.status)}${u.lockNote?`<br><span class="muted" style="font-size:12px">${esc(u.lockNote)}</span>`:''}</td>
   <td>${u.pw.state==='임시'?pill('임시 · 첫 로그인 때 변경','warn'):`<span class="muted">설정됨 ${u.pw.at}</span>`}</td><td class="mono">${u.last||'—'}</td><td>${Object.keys(u.ov).length?pill('개별 '+Object.keys(u.ov).length+'건','info'):'<span class="muted">부서 기본</span>'}</td>
   <td><div class="row" style="gap:4px;flex-wrap:nowrap"><button class="sm" data-accsel="${u.id}">권한 보기</button><button class="sm" data-acc="pw|${u.id}">비밀번호</button>${u.status==='잠김'?`<button class="sm" data-acc="unlock|${u.id}">잠금 해제</button>`:''}${u.status==='비활성'?`<button class="sm" data-acc="enable|${u.id}">다시 활성</button>`:`<button class="sm" data-acc="disable|${u.id}">비활성</button>`}</div></td></tr>`).join('')}
   </tbody></table></div>${sel?permCard(sel):''}`;}
@@ -487,28 +506,28 @@ function tplView(){const D=S.tplDept;const t=S.tplDraft&&S.tplDraft.d===D?S.tplD
   <div class="tw"><table><thead><tr><th>화면</th>${DEPTS.map(d=>`<th class="c">${d}</th>`).join('')}</tr></thead><tbody>${PSCR.map(([sc,nm],i)=>`<tr><td>${nm}</td>${DEPTS.map(d=>`<td class="c">${['<span class="muted">—</span>',pill('보기','mute'),pill('편집','acc')][S.tpl[d][i]]}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;}
 function accountsView(){const U=S.users;
   return `<h1>M3 계정·권한 관리</h1>
-  <p class="lead">부서별로 직원을 등록해 계정을 만들고 화면마다 보기·편집 권한을 줍니다. 처음에는 부서 기본 권한을 받고 사람마다 바꿀 수 있습니다. 비밀번호 원문은 저장하지 않으며 계정·권한 변경은 모두 작업 로그에 남습니다.</p>
+  <p class="lead">부서별로 직원을 등록해 계정을 만들고 화면마다 보기·편집 권한을 줍니다. 처음에는 부서 기본 권한을 받고 사람마다 바꿀 수 있습니다. 비밀번호 원문은 저장하지 않으며 계정·권한 변경은 모두 작업 로그에 남습니다. 관리자는 계정별 활동 탭에서 직원마다 무엇을 했고 성공·실패했는지 봅니다.</p>
   <div class="tiles">
     <div class="tile"><span class="k">직원 · 부서</span><span class="v">${U.length}명</span><span class="s">${DEPTS.length}개 부서</span></div>
     <div class="tile"><span class="k">활성 계정</span><span class="v">${U.filter(u=>u.status==='활성').length}개</span><span class="s">비활성 ${U.filter(u=>u.status==='비활성').length} · 퇴사·휴직</span></div>
     <div class="tile ${U.some(u=>u.status==='잠김'||u.pw.state==='임시')?'alert':''}"><span class="k">조치 필요</span><span class="v">${U.filter(u=>u.status==='잠김'||u.pw.state==='임시').length}명</span><span class="s">잠김 ${U.filter(u=>u.status==='잠김').length} · 임시 비밀번호 ${U.filter(u=>u.pw.state==='임시').length}</span></div>
     <div class="tile"><span class="k">관리자</span><span class="v">${U.filter(u=>u.status!=='비활성'&&perm(u,'accounts')===2).length}명</span><span class="s">M3 편집 권한</span></div>
   </div>
-  <div class="row" style="gap:8px;margin-bottom:12px"><button class="${S.accTab==='users'?'primary':''}" data-acctab="users">직원 계정</button><button class="${S.accTab==='tpl'?'primary':''}" data-acctab="tpl">부서 기본 권한</button><span class="sp"></span><button class="primary" data-acc="new|">직원 등록</button></div>
-  ${S.accTab==='tpl'?tplView():usersView()}`;}
+  <div class="row" style="gap:8px;margin-bottom:12px"><button class="${S.accTab==='users'?'primary':''}" data-acctab="users">직원 계정</button><button class="${S.accTab==='tpl'?'primary':''}" data-acctab="tpl">부서 기본 권한</button><button class="${S.accTab==='act'?'primary':''}" data-acctab="act">계정별 활동</button><span class="sp"></span><button class="primary" data-acc="new|">직원 등록</button></div>
+  ${S.accTab==='tpl'?tplView():S.accTab==='act'?actView():usersView()}`;}
 const EDIT_SEL=['[data-done]','[data-map]','[data-approve]','[data-release]','[data-cancel]','[data-pull]','#pullAll','#cycle','#runCol','#cutBtn','#reflectBtn','#raceBtn','#shipCSV','#pkgBtn','#costReq','#holdForm input','#holdForm select','#holdForm button','[data-acc]','input[data-perm]','input[data-tpl]'].map(x=>'#view '+x).join(',');
 function lockEdits(){document.querySelectorAll(EDIT_SEL).forEach(el=>{el.disabled=true;el.title='편집 권한이 없습니다';});}
 function deny(sc,what){alog({area:'권한',action:what,target:PNAME[sc]||sc,ok:false,who:'담당자',reason:'편집 권한 없음 → 실행 안 함'});render();toast(`${PNAME[sc]||sc} 편집 권한이 없어 실행하지 않았습니다. AX팀에 권한을 요청하세요`);}
 const AREA_SC={수집:'collect',보류:'hold'};
 /* ---------- 작업 로그 · 실패 처리 ---------- */
 function alog(o){let who=o.who||'시스템(자동)';if(!o.at&&S.users&&(DEPTS.includes(who)||who==='담당자'||who.startsWith('요청자')))who=meLabel();
-  const e={at:o.at||S.clock,who,area:o.area,action:o.action,target:o.target||'',result:o.result||(o.ok?'성공':'실패'),reason:o.reason||'',fid:o.fid||null};
+  const e={at:o.at||S.clock,who,area:o.area,action:o.action,target:o.target||'',result:o.result||(o.ok?'성공':'실패'),reason:o.reason||'',fid:o.fid||null,sku:o.sku||null,before:o.before??null,after:o.after??null};
   S.actlog.unshift(e);S.actlog.sort((a,b)=>a.at<b.at?1:a.at>b.at?-1:0);return e;}
 function fail(f,show){S.fails[f.id]={...f,resolved:false,at:f.at||S.clock};
-  alog({at:f.at,area:f.area,action:f.action,target:f.target,ok:false,reason:f.reason,who:f.who||'시스템(자동)',fid:f.id});
+  alog({at:f.at,area:f.area,action:f.action,target:f.target,ok:false,reason:f.reason,who:f.who||'시스템(자동)',fid:f.id,sku:f.sku||(f.data&&f.data.sku)||(f.data&&f.data.req&&f.data.req.sku)});
   if(show)showFail(f.id);}
 function resolveFail(id,how,mode,who){const f=S.fails[id];if(!f||f.resolved)return;f.resolved=true;f.how=how;
-  alog({area:f.area,action:f.action,target:f.target,result:{fix:'수정 후 반영',manual:'수동 처리',retry:'재시도 성공'}[mode],reason:how,who:who||f.owner,fid:id});}
+  alog({area:f.area,action:f.action,target:f.target,result:{fix:'수정 후 반영',manual:'수동 처리',retry:'재시도 성공'}[mode],reason:how,who:who||f.owner,fid:id,sku:f.sku||(f.data&&f.data.sku)||(f.data&&f.data.req&&f.data.req.sku)});}
 const FIXK={auto:'고쳐서 자동 재실행',retry:'다시 시도',manual:'수동 처리',note:'조치만'};
 function showFail(id){const f=S.fails[id];if(!f)return;
   modal(f.resolved?'처리된 작업':'작업 실패 · 반영하지 않았습니다',`<div class="stack">
@@ -524,7 +543,7 @@ function syncFails(){S.files.forEach(fl=>fl.issues.forEach(i=>{if(!i.fid||S.fail
     impact:`오늘 UAE 숫자는 반영하지 않았습니다. 어제(${MD(-1)} 07:20) 검증본을 쓰고 화면에 어제 기준으로 표시합니다.`,
     fixes:[{key:'aeUpload',label:'3PL에게 따로 받은 파일을 직접 올리기 → 같은 검증 후 자동 반영',kind:'auto'},{key:'aeResend',label:'3PL에 재송부 요청 다시 보내기',kind:'note'}]});return;}
   const neg=i.kind==='neg';
-  fail({id:i.fid,l1:true,at:fl.at,area:'수집',action:`${fl.src} 파일 행 반영`,target:`${i.row}행 ${i.sku}`,owner:'SCM물류',data:{c:fl.c,rid:i.rid},
+  fail({id:i.fid,l1:true,at:fl.at,area:'수집',action:`${fl.src} 파일 행 반영`,target:`${i.row}행 ${i.sku}`,owner:'SCM물류',data:{c:fl.c,rid:i.rid,sku:i.sku},
     reason:neg?`수량이 ${i.qty} (음수)입니다. 재고는 음수가 될 수 없어 의미 검증에서 걸렸습니다.`:`'${i.sku}'는 기준정보에 없는 SKU입니다. 오타이거나 신규 SKU 등록 누락입니다.`,
     impact:neg?`이 행만 반영하지 않고 어제 값 ${fmt(i.prev)}개를 유지했습니다. 나머지 행은 반영했습니다.`:`이 행 ${fmt(i.qty)}개만 반영하지 않았습니다. 나머지 행은 반영했습니다.`,
     fixes:neg?[{key:'rowFix',label:'올바른 수량을 입력 → 같은 검증 후 자동 반영',kind:'auto'},{key:'rowKeep',label:'3PL 확인 결과 어제 값이 맞음 → 어제 값으로 확정',kind:'manual'}]
@@ -554,7 +573,7 @@ const FIX={
   cutManual:f=>{doCut(f.data.list,f.data.id,'수동 메일 전달');resolveFail(f.id,`전송 파일을 내려받아 3PL에 메일로 직접 보냄 · ${f.data.list.length}건 (SCM물류 수동)`,'manual','SCM물류');render();
     modal(`3PL 보류 지시 파일 · ${f.data.id} (수동 전달)`,'<p>이 내용을 3PL 양식 엑셀로 내려받아 메일로 보내세요. 보낸 것으로 기록했습니다.</p>',batchCSV(f.data.list));},
   resPartial:f=>{const q=f.data.req;const a=Math.floor(requestable(q.sku)/10)*10;if(a<10){toast('지금은 요청 가능 수량이 없습니다');return;}
-    const r=reserve({...q,qty:a});closeM();if(r.ok){resolveFail(f.id,`${fmt(a)}개로 줄여 다시 요청 → ${r.id} 예약확정`,'fix',q.by);alog({area:'보류',action:'보류 요청',target:`${r.id} ${q.sku} ${a}개`,ok:true,who:q.by,reason:'줄인 수량으로 재요청'});}
+    const r=reserve({...q,qty:a});closeM();if(r.ok){resolveFail(f.id,`${fmt(a)}개로 줄여 다시 요청 → ${r.id} 예약확정`,'fix',q.by);alog({area:'보류',action:'보류 요청',target:`${r.id} ${q.sku} ${a}개`,ok:true,who:q.by,reason:'줄인 수량으로 재요청',sku:q.sku,before:requestable(q.sku)+a,after:requestable(q.sku)});}
     S.holdSku=q.sku;render();toast(r.ok?`${r.id} ${fmt(a)}개 예약 확정`:'다시 실패했습니다. 작업 로그를 보세요');},
   resOther:f=>{resolveFail(f.id,'요청을 접고 다른 색상·로트를 찾기로 함 (요청자)','manual',f.data.req.by);closeM();S.q=f.data.req.sku.slice(0,5);go('stock');},
 };
@@ -740,7 +759,7 @@ V.stock=()=>{
   ${sel?skuDetail(sel):'<p class="muted" style="margin-top:12px">행을 누르면 로트별 유효기간과 보류 내역이 아래에 열립니다.</p>'}`;
 };
 function skuDetail(k){const s=S.skuMap[k];const L=S.lots.filter(l=>l.sku===k);
-  return `<div class="card detail stack"><div class="row"><h2 style="margin:0">${esc(s.name)} <span class="mono muted">${k}</span></h2><span class="sp"></span><button class="primary sm" data-hold="${k}">이 SKU 보류 요청</button></div>
+  return `<div class="card detail stack"><div class="row"><h2 style="margin:0">${esc(s.name)} <span class="mono muted">${k}</span></h2><span class="sp"></span><button class="sm" data-trace="${k}">숫자 추적</button><button class="primary sm" data-hold="${k}">이 SKU 보류 요청</button></div>
   <div class="grid g2"><div><b>국내 로트 (FEFO 순)</b><div class="tw" style="margin-top:6px"><table><thead><tr><th>로트</th><th>유효기간</th><th>잔여</th><th class="n">실물</th><th class="n">출고 가능</th><th class="n">원가</th></tr></thead><tbody>
   ${L.map(l=>`<tr><td class="mono">${l.lot}</td><td class="mono">${fmtD(l.exp)}</td><td>${remPill(mLeft(l.exp))}</td><td class="n">${fmt(l.onhand)}</td><td class="n">${fmt(lotAvail(l))}</td><td class="n">${l.cost==null?pill('미확정','warn'):fmt(l.cost)}</td></tr>`).join('')}</tbody></table></div></div>
   <div><b>해외 3PL</b> <span class="muted">로트·유효기간 미제공</span><div class="tw" style="margin-top:6px"><table><thead><tr><th>국가</th><th class="n">수량</th><th>기준</th></tr></thead><tbody>
@@ -789,6 +808,18 @@ function lineage(kind,sku){let html='';
       const note=S.osStale[C.c]?pill('어제 검증본','warn'):r.qty<0?pill('음수 → 격리, 어제 값','bad'):sku===S.usDrop&&C.c==='US'?pill('급감 경고','warn'):'';
       return `<tr><td>${C.n}</td><td class="mono">${esc(C.file||C.lastFile)} · ${r.row}행</td><td class="n">${fmt(S.osStock[C.c][sku]||0)}</td><td>${note}</td></tr>`;}).join('')||'<tr><td colspan="4" class="muted">해외 재고 없음</td></tr>'}</tbody></table></div>`;}
   modal(`${sku} · 숫자 근거`,html);}
+function traceSku(k){const s=S.skuMap[k];const L=S.lots.filter(l=>l.sku===k);
+  const oh=sum(L,l=>l.onhand),blk=sum(L,l=>l.qc+l.alloc),wh=sum(L,l=>l.wmsHold),pr=pendingRes(k);
+  const src=[[`${S.collectRunAt}`,'시스템(자동)','국내 WMS 수집·검증',`KR_WMS 재고 조회 · 로트 ${L.length}행`,`실물 ${fmt(oh)} · 품질보류·할당 ${fmt(blk)} · WMS 보류 ${fmt(wh)}`]]
+    .concat(S.countries.map(C=>{const r=S.osRaw[C.c].find(x=>x.sku===k);if(!r)return null;return [C.at||C.last,'시스템(자동)',`${C.n} 3PL 수집`,`${C.file||C.lastFile} · ${r.row}행`,`${fmt(S.osStock[C.c][k]||0)}개 반영${S.osStale[C.c]?' (어제 검증본)':''}`];}).filter(Boolean));
+  const holds=S.res.filter(r=>r.sku===k);
+  const logs=S.actlog.filter(e=>e.sku===k).slice().reverse();
+  modal(`${k} · 숫자 추적`,`<div class="stack">
+    <p><b>${esc(s.name)}</b> 지금 요청 가능 <b class="mono">${fmt(requestable(k))}</b>개 = 실물 ${fmt(oh)} − 품질보류·할당 ${fmt(blk)} − WMS 보류 ${fmt(wh)} − 내부 예약 ${fmt(pr)}</p>
+    <h3 style="margin:4px 0 0">① 숫자를 만든 원천</h3><div class="tw"><table><thead><tr><th>시각</th><th>작업자</th><th>작업</th><th>파일 · 행</th><th>값</th></tr></thead><tbody>${src.map(r=>`<tr>${r.map((c,i)=>`<td class="${i===3?'mono':''}">${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
+    <h3 style="margin:4px 0 0">② 이 SKU에 걸린 보류 (누가 · 언제)</h3><div class="tw"><table><thead><tr><th>번호</th><th class="n">수량</th><th>요청</th><th>상태</th><th>전송</th></tr></thead><tbody>${holds.map(r=>`<tr><td class="mono">${r.id}</td><td class="n">${fmt(r.qty)}</td><td>${esc(r.by)} · ${r.at}</td><td>${stPill(r.status)}</td><td class="mono">${r.sent||'—'}</td></tr>`).join('')||'<tr><td colspan="5" class="muted">보류 없음</td></tr>'}</tbody></table></div>
+    <h3 style="margin:4px 0 0">③ 오늘 이 숫자를 바꾼 작업 (시간순)</h3><div class="tw"><table><thead><tr><th>시각</th><th>작업자</th><th>작업</th><th>결과</th><th class="n">요청 가능 변경</th></tr></thead><tbody>${logs.map(e=>`<tr><td class="mono">${e.at}</td><td>${esc(e.who)}</td><td class="wrap">${esc(e.action)}<br><span class="muted" style="font-size:12px">${esc(e.target)}</span></td><td>${stPill(e.result)}</td><td class="n mono">${e.before!=null?`${fmt(e.before)} → ${fmt(e.after)}`:'—'}</td></tr>`).join('')||'<tr><td colspan="5" class="muted">오늘 이 SKU를 바꾼 작업이 없습니다</td></tr>'}</tbody></table></div>
+    <p class="muted" style="margin:0">숫자가 이상하면 ①에서 원본 파일·행을, ②·③에서 누가 언제 무엇을 했는지 거꾸로 따라가 봅니다. 모든 기록은 M2 작업 로그에도 남습니다.</p></div>`);}
 function holdAvailText(){const k=($('#hSku')||{}).value;const el=$('#hAvail');if(!el)return;if(!S.skuMap[k]){el.textContent='등록된 SKU가 아닙니다';return;}el.innerHTML=`${esc(S.skuMap[k].name)} · 지금 요청 가능 <b class="mono">${fmt(requestable(k))}</b>개`;}
 function reserve(req){const r=requestable(req.sku);if(req.qty>r)return{ok:false,avail:r};const id='H-'+(++S.seq);S.res.push({...req,id,status:req.urgent?'긴급 승인 대기':'예약확정',at:S.clock});return{ok:true,id};}
 function batchCSV(list){return toCSV([['요청번호','SKU','품명','보류수량','채널','사유','해제예정일','전송구분'],...list.map(r=>[r.id,r.sku,S.skuMap[r.sku].name,r.qty,chName(r.ch),r.purpose,r.end,r.sent||'정기 마감'])]);}
@@ -920,7 +951,7 @@ V.sources=()=>{
 V.log=()=>{
   const L=S.actlog;const open=Object.values(S.fails).filter(f=>!f.resolved);
   const F=S.logF,A=S.logA;
-  const rows=L.filter(e=>(F==='all'||(F==='fail'&&e.result==='실패')||(F==='open'&&e.fid&&S.fails[e.fid]&&!S.fails[e.fid].resolved&&e.result==='실패')||(F==='fixed'&&['수정 후 반영','수동 처리','재시도 성공'].includes(e.result)))&&(!A||e.area===A));
+  const Q=(S.logQ||'').trim().toLowerCase();const rows=L.filter(e=>(!Q||[e.who,e.action,e.target,e.sku||'',e.reason].join(' ').toLowerCase().includes(Q))&&(F==='all'||(F==='fail'&&e.result==='실패')||(F==='open'&&e.fid&&S.fails[e.fid]&&!S.fails[e.fid].resolved&&e.result==='실패')||(F==='fixed'&&['수정 후 반영','수동 처리','재시도 성공'].includes(e.result)))&&(!A||e.area===A));
   const areas=[...new Set(L.map(e=>e.area))];
   return `<h1>M2 작업 로그</h1>
   <p class="lead">수집이든 보류·전송이든 허브에서 일어난 모든 작업을 시각·작업자·결과·원인과 함께 남깁니다. 실패한 작업은 반영하지 않고(직전 상태 유지), 작업한 사람에게 바로 원인을 알립니다. 고쳐서 자동으로 다시 돌리거나 사람이 직접 처리할 수 있고 그 처리도 기록됩니다.</p>
@@ -932,9 +963,9 @@ V.log=()=>{
   </div>
   ${open.length?`<div class="card stack" style="margin-bottom:14px"><h2 style="margin:0">고쳐야 할 실패 ${open.length}건</h2>${open.map(f=>`<div class="issue">${stPill('실패')}<span><b>${esc(f.action)}</b> · ${esc(f.target)}<br><span class="muted">${esc(f.reason)} · 알림: ${esc(f.owner)}</span></span><span class="sp"></span><button class="sm primary" data-showfail="${f.id}">고치기</button></div>`).join('')}</div>`:''}
   <div class="row" style="margin-bottom:10px;gap:10px;flex-wrap:wrap"><select id="logF">${[['all','전체'],['fail','실패만'],['open','미해결 실패'],['fixed','고쳐서 처리한 것']].map(([v,t])=>`<option value="${v}" ${F===v?'selected':''}>${t}</option>`).join('')}</select>
-    <select id="logA"><option value="">모든 영역</option>${areas.map(a=>`<option ${A===a?'selected':''}>${esc(a)}</option>`).join('')}</select><span class="muted">${rows.length}건</span></div>
+    <input id="logQ" placeholder="SKU·작업자·번호 검색" value="${esc(S.logQ||'')}" style="width:200px"><select id="logA"><option value="">모든 영역</option>${areas.map(a=>`<option ${A===a?'selected':''}>${esc(a)}</option>`).join('')}</select><span class="muted">${rows.length}건</span></div>
   <div class="tw"><table><thead><tr><th>시각</th><th>작업자</th><th>영역</th><th>작업</th><th>대상</th><th>결과</th><th>원인 · 처리 내용</th><th></th></tr></thead><tbody>
-  ${rows.map(e=>`<tr><td class="mono">${e.at}</td><td>${esc(e.who)}</td><td>${esc(e.area)}</td><td class="wrap">${esc(e.action)}</td><td class="wrap mono" style="font-size:12px">${esc(e.target)}</td><td>${stPill(e.result)}</td><td class="wrap">${esc(e.reason)}</td><td>${e.fid&&S.fails[e.fid]?`<button class="sm" data-showfail="${e.fid}">${S.fails[e.fid].resolved?'내용':'고치기'}</button>`:''}</td></tr>`).join('')}
+  ${rows.map(e=>`<tr><td class="mono">${e.at}</td><td>${esc(e.who)}</td><td>${esc(e.area)}</td><td class="wrap">${esc(e.action)}</td><td class="wrap mono" style="font-size:12px">${esc(e.target)}</td><td>${stPill(e.result)}</td><td class="wrap">${esc(e.reason)}${e.before!=null?`<br><span class="mono muted" style="font-size:12px">요청 가능 ${fmt(e.before)} → ${fmt(e.after)}</span>`:''}</td><td>${e.fid&&S.fails[e.fid]?`<button class="sm" data-showfail="${e.fid}">${S.fails[e.fid].resolved?'내용':'고치기'}</button>`:''}</td></tr>`).join('')}
   </tbody></table></div>
   <div class="grid g3" style="margin-top:14px">
     <div class="note"><b>실패하면 반영하지 않음</b> · 일부만 들어가는 일이 없도록 작업 단위로 처리하고 직전 검증본·직전 상태를 유지합니다</div>
@@ -983,6 +1014,7 @@ const go=v=>{if(location.hash==='#'+v)render();else location.hash=v;};
 
 document.addEventListener('input',e=>{
   if(e.target.id==='q'){S.q=e.target.value;const pos=e.target.selectionStart;render();const q=$('#q');q.focus();q.setSelectionRange(pos,pos);}
+  if(e.target.id==='logQ'){S.logQ=e.target.value;const pos=e.target.selectionStart;render();const q=$('#logQ');q.focus();q.setSelectionRange(pos,pos);}
   if(e.target.id==='accQ'){S.accQ=e.target.value;const pos=e.target.selectionStart;render();const q=$('#accQ');q.focus();q.setSelectionRange(pos,pos);}
 });
 document.addEventListener('change',e=>{
@@ -990,6 +1022,8 @@ document.addEventListener('change',e=>{
   if(e.target.id==='short'){S.short=e.target.checked;render();}
   if(e.target.id==='logF'){S.logF=e.target.value;render();}
   if(e.target.id==='accDept'){S.accDept=e.target.value;render();}
+  if(e.target.id==='actOnly'){S.actOnly=e.target.value;render();}
+  if(e.target.id==='actAll'){S.actAll=e.target.checked;render();}
   if(e.target.id==='tplDept'){S.tplDept=e.target.value;S.tplDraft=null;render();}
   if(e.target.dataset&&e.target.dataset.perm){const[id,sc,l]=e.target.dataset.perm.split('|');const u=S.users.find(x=>x.id===id);if(!S.permDraft||S.permDraft.id!==id)S.permDraft={id,p:Object.fromEntries(PSCR.map(([k])=>[k,perm(u,k)]))};S.permDraft.p[sc]=+l;render();}
   if(e.target.dataset&&e.target.dataset.tpl){const[i,l]=e.target.dataset.tpl.split('|').map(Number);if(!S.tplDraft||S.tplDraft.d!==S.tplDept)S.tplDraft={d:S.tplDept,t:S.tpl[S.tplDept].slice()};S.tplDraft.t[i]=l;render();}
@@ -1002,10 +1036,10 @@ document.addEventListener('submit',e=>{
   const sku=$('#hSku').value.trim(),qty=+$('#hQty').value;
   if(!S.skuMap[sku]){toast('등록된 SKU를 고르세요');return;}
   if(!(qty>0)){toast('수량을 입력하세요');return;}
-  const req={sku,qty,ch:$('#hCh').value,purpose:$('#hPur').value||'—',end:$('#hEnd').value||'—',urgent:$('#hUrg').checked,by:'국내영업'};
+  const req={sku,qty,ch:$('#hCh').value,purpose:$('#hPur').value||'—',end:$('#hEnd').value||'—',urgent:$('#hUrg').checked,by:meLabel()};
   const r=reserve(req);
   S.holdSku=sku;
-  if(r.ok){alog({area:'보류',action:'보류 요청',target:`${r.id} ${sku} ${fmt(qty)}개`,ok:true,who:'국내영업',reason:`요청 가능 ${fmt(requestable(sku)+qty)} → ${fmt(requestable(sku))}개`});render();
+  if(r.ok){alog({area:'보류',action:'보류 요청',target:`${r.id} ${sku} ${fmt(qty)}개`,ok:true,who:'국내영업',reason:'예약확정',sku,before:requestable(sku)+qty,after:requestable(sku)});render();
     toast(`${r.id} 예약 확정. 요청 가능 수량이 ${fmt(requestable(sku)+qty)} → ${fmt(requestable(sku))}개로 바로 줄었습니다`);}
   else{const a=Math.floor(r.avail/10)*10;render();
     fail({id:'f-res-'+(++S.fseq),area:'보류',action:'보류 요청',target:`${sku} ${fmt(qty)}개`,owner:'요청자 (국내영업)',who:'국내영업',data:{req},
@@ -1019,8 +1053,10 @@ document.addEventListener('click',e=>{
   if(d.pull){if(!S.busy)pullSrc(d.pull);return;}
   if(d.done){S.done[d.done]=!S.done[d.done];alog({area:'예외 처리',action:S.done[d.done]?'처리 완료 표시':'처리 완료 되돌리기',target:d.done,ok:true,who:'담당자'});render();return;}
   if(d.showfail){showFail(d.showfail);return;}
+  if(d.trace){traceSku(d.trace);return;}
   if(d.fix||d.fixgo){const fid=(d.fix||d.fixgo).split('|')[0];const sc=AREA_SC[S.fails[fid].area];if(sc&&!canEdit(sc)){closeM();deny(sc,'실패 작업 고치기');return;}}
   if(d.acctab){S.accTab=d.acctab;render();return;}
+  if(d.actuser){S.accTab='act';S.actSel=d.actuser;S.actOnly='all';render();return;}
   if(d.accsel){S.accSel=d.accsel;S.permDraft=null;render();return;}
   if(d.acc){if(!canEdit('accounts')){deny('accounts','계정 관리');return;}const[k,id]=d.acc.split('|');ACC[k](id);return;}
   if(d.accgo){if(!canEdit('accounts')){closeM();deny('accounts','계정 관리');return;}ACCGO[d.accgo]();return;}
@@ -1030,10 +1066,10 @@ document.addEventListener('click',e=>{
   if(d.lin){e.stopPropagation();lineage(...d.lin.split('|'));return;}
   if(d.hold){S.holdSku=d.hold;go('hold');return;}
   if(t.matches('tr.clickable')){S.sel=S.sel===d.sku?null:d.sku;render();return;}
-  if(d.map){const[code,sku]=d.map.split('|');S.codeMap[code]=sku;S.history.unshift({at:DS(),item:'상품코드 매핑 · H&B 체인 A',change:`${code} → ${sku}`,by:'국내영업',src:`${PML} 매입 확정서`});alog({area:'정산',action:'상품코드 매핑 확정',target:`${code} → ${sku}`,ok:true,who:'국내영업',reason:'기준정보(M0)에 저장'});render();toast(`매핑을 확정했습니다. 다음 달부터 ${code}는 자동으로 ${sku}로 바뀝니다`);return;}
+  if(d.map){const[code,sku]=d.map.split('|');S.codeMap[code]=sku;S.history.unshift({at:DS(),item:'상품코드 매핑 · H&B 체인 A',change:`${code} → ${sku}`,by:'국내영업',src:`${PML} 매입 확정서`});alog({area:'정산',action:'상품코드 매핑 확정',target:`${code} → ${sku}`,ok:true,who:'국내영업',reason:'기준정보(M0)에 저장',sku});render();toast(`매핑을 확정했습니다. 다음 달부터 ${code}는 자동으로 ${sku}로 바뀝니다`);return;}
   if(d.approve){const r=S.res.find(x=>x.id===d.approve);r.status='전송완료';r.sent='긴급 건별';r.note='야간 작업비 발생 (금액: [₩__])';S.batches.push({id:'U-'+r.id,at:S.clock+' 긴급',n:1,list:[r]});alog({area:'보류',action:'긴급 보류 비용 승인·건별 전송',target:r.id,ok:true,who:'SCM물류'});render();toast(`${r.id} 비용 승인 후 3PL에 건별로 보냈습니다`);return;}
-  if(d.release){const r=S.res.find(x=>x.id===d.release);let n=r.qty;S.lots.filter(l=>l.sku===r.sku).forEach(l=>{const t2=Math.min(n,l.wmsHold);l.wmsHold-=t2;n-=t2;});r.status='해제';alog({area:'보류',action:'보류 해제',target:`${r.id} ${r.sku} ${fmt(r.qty)}개`,ok:true,who:'국내영업'});render();toast(`${r.id} 해제. ${fmt(r.qty)}개가 다시 요청 가능해졌습니다`);return;}
-  if(d.cancel){const r=S.res.find(x=>x.id===d.cancel);r.status='해제';r.note='3PL 전송 전 취소';alog({area:'보류',action:'보류 취소',target:r.id,ok:true,who:'국내영업',reason:'3PL 전송 전'});render();toast(`${r.id} 취소. 3PL에는 보내지 않았습니다`);return;}
+  if(d.release){const r=S.res.find(x=>x.id===d.release);const b0=requestable(r.sku);let n=r.qty;S.lots.filter(l=>l.sku===r.sku).forEach(l=>{const t2=Math.min(n,l.wmsHold);l.wmsHold-=t2;n-=t2;});r.status='해제';alog({area:'보류',action:'보류 해제',target:`${r.id} ${r.sku} ${fmt(r.qty)}개`,ok:true,who:'국내영업',sku:r.sku,before:b0,after:requestable(r.sku)});render();toast(`${r.id} 해제. ${fmt(r.qty)}개가 다시 요청 가능해졌습니다`);return;}
+  if(d.cancel){const r=S.res.find(x=>x.id===d.cancel);const b0=requestable(r.sku);r.status='해제';r.note='3PL 전송 전 취소';alog({area:'보류',action:'보류 취소',target:`${r.id} ${r.sku} ${fmt(r.qty)}개`,ok:true,who:'국내영업',reason:'3PL 전송 전',sku:r.sku,before:b0,after:requestable(r.sku)});render();toast(`${r.id} 취소. 3PL에는 보내지 않았습니다`);return;}
   if(d.batch){const b=S.batches.find(x=>x.id===d.batch);modal(`3PL 보류 지시 파일 · ${b.id}`,`<p class="muted">시연 화면에서는 파일 다운로드 대신 내용을 보여줍니다. 실제로는 3PL 양식 엑셀로 내려받습니다.</p>`,batchCSV(b.list));return;}
   switch(t.id){
     case 'pullAll':{if(S.busy)break;(async()=>{const bad=[];for(const x of S.sources.filter(x=>x.pull)){const ok=await pullSrc(x.id,true);if(!ok)bad.push(x.sys);}toast(bad.length?`전체 수집: 성공 ${S.sources.filter(x=>x.pull).length-bad.length}건 · 실패 ${bad.length}건 (${bad.join(', ')}). 실패 건은 반영하지 않았고 M2 작업 로그에서 고칠 수 있습니다`:'전체 수집 성공');})();break;}
@@ -1046,11 +1082,11 @@ document.addEventListener('click',e=>{
           reason:'3PL SFTP 접속 시간 초과(30초). 자동 재시도 3번도 모두 실패했습니다.',
           impact:'아무것도 보내지 않았습니다. 보류는 모두 예약확정 그대로이고 요청 가능 수량도 바뀌지 않았습니다.',
           fixes:[{key:'cutRetry',label:'다시 전송',kind:'retry'},{key:'cutManual',label:'전송 파일을 내려받아 3PL에 메일로 직접 보내기',kind:'manual'}]},true);render();break;}
-      const cut=doCut(list,id);alog({area:'보류',action:`${cut} 마감 3PL 전송`,target:`${id} · ${list.length}건`,ok:true,who:'SCM물류',reason:'SFTP 전송 완료'});render();
+      const cut=doCut(list,id);alog({area:'보류',action:`${cut} 마감 3PL 전송`,target:`${id} · ${list.length}건`,ok:true,who:'SCM물류',reason:'SFTP 전송 완료'});list.forEach(r=>alog({area:'보류',action:`${cut} 마감 3PL 전송`,target:`${r.id} ${r.sku} ${fmt(r.qty)}개`,ok:true,who:'SCM물류',reason:`${id}에 포함`,sku:r.sku,before:requestable(r.sku),after:requestable(r.sku)}));render();
       modal(`3PL 보류 지시 파일 · ${id}`,`<p>${list.length}건을 한 번에 보냅니다. 건별 처리 대비 야간 작업 없음.</p>`,batchCSV(list));break;}
     case 'reflectBtn':{const list=S.res.filter(r=>r.status==='전송완료');const before=Object.fromEntries(list.map(r=>[r.sku,requestable(r.sku)]));
       if(!list.length){toast('반영 확인할 전송 건이 없습니다');break;}
-      list.forEach(r=>{applyWmsHold(r.sku,r.qty);r.status='반영확인';});alog({area:'보류',action:'WMS 보류 반영 확인',target:`${list.length}건`,ok:true,who:'SCM물류',reason:'다음 WMS 수집에서 보류 수량 일치 확인'});render();
+      list.forEach(r=>{const b0=requestable(r.sku);applyWmsHold(r.sku,r.qty);r.status='반영확인';alog({area:'보류',action:'WMS 보류 반영 확인',target:`${r.id} ${r.sku} ${fmt(r.qty)}개`,ok:true,who:'SCM물류',reason:'내부 예약 → WMS 보류로 이동, 이중 차감 없음',sku:r.sku,before:b0,after:requestable(r.sku)});});render();
       const sk=list[0].sku;toast(`WMS 반영 ${list.length}건 확인. 예: ${sk} 요청 가능 ${fmt(before[sk])} → ${fmt(requestable(sk))}개, 그대로라 이중 차감이 없습니다`);break;}
     case 'raceBtn':{const sku=($('#hSku')||{}).value&&S.skuMap[$('#hSku').value]?$('#hSku').value:'DD-LG-01';const r0=requestable(sku);
       if(r0<20){toast('이 SKU는 요청 가능 수량이 너무 적습니다. 다른 SKU를 고르세요');break;}
