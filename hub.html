@@ -471,12 +471,12 @@ function tplView(){const D=S.tplDept;const t=S.tplDraft&&S.tplDraft.d===D?S.tplD
   return `<div class="row" style="gap:10px;margin-bottom:10px;flex-wrap:wrap"><select id="tplDept">${DEPTS.map(d=>`<option ${D===d?'selected':''}>${d}</option>`).join('')}</select><span class="muted">이 부서로 새 직원을 등록하면 이 권한을 받습니다 · 소속 ${S.users.filter(u=>u.dept===D&&u.status!=='비활성').length}명</span></div>
   <div class="tw"><table><thead><tr><th>화면</th><th class="c">없음</th><th class="c">보기</th><th class="c">편집</th></tr></thead><tbody>
   ${PSCR.map(([sc,nm],i)=>`<tr class="${S.tplDraft&&t[i]!==S.tpl[D][i]?'ovrow':''}"><td>${nm}</td>${[0,1,2].map(l=>`<td class="c"><input type="radio" name="t-${sc}" data-tpl="${i}|${l}" ${t[i]===l?'checked':''} aria-label="${nm} ${LV[l]}"></td>`).join('')}</tr>`).join('')}</tbody></table></div>
-  <div class="row" style="margin-top:10px"><span class="muted">저장하면 개별 권한이 없는 직원에게 바로 적용되고, 개별 권한은 그대로 둡니다.</span><span class="sp"></span><button data-acc="tplcancel|" ${S.tplDraft?'':'disabled'}>취소</button><button class="primary" data-acc="tplsave|" ${S.tplDraft?'':'disabled'}>부서 기본 권한 저장</button></div>
+  <div class="row" style="margin-top:10px"><span class="muted">저장하면 개별 권한이 없는 직원에게 바로 적용되고 개별 권한은 그대로 둡니다.</span><span class="sp"></span><button data-acc="tplcancel|" ${S.tplDraft?'':'disabled'}>취소</button><button class="primary" data-acc="tplsave|" ${S.tplDraft?'':'disabled'}>부서 기본 권한 저장</button></div>
   <h2 style="margin-top:18px">부서별 기본 권한 한눈에</h2>
   <div class="tw"><table><thead><tr><th>화면</th>${DEPTS.map(d=>`<th class="c">${d}</th>`).join('')}</tr></thead><tbody>${PSCR.map(([sc,nm],i)=>`<tr><td>${nm}</td>${DEPTS.map(d=>`<td class="c">${['<span class="muted">—</span>',pill('보기','mute'),pill('편집','acc')][S.tpl[d][i]]}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;}
 function accountsView(){const U=S.users;
   return `<h1>M3 계정·권한 관리</h1>
-  <p class="lead">부서별로 직원을 등록해 계정을 만들고, 화면마다 보기·편집 권한을 줍니다. 처음에는 부서 기본 권한을 받고 사람마다 바꿀 수 있습니다. 비밀번호 원문은 저장하지 않으며, 계정·권한 변경은 모두 작업 로그에 남습니다.</p>
+  <p class="lead">부서별로 직원을 등록해 계정을 만들고 화면마다 보기·편집 권한을 줍니다. 처음에는 부서 기본 권한을 받고 사람마다 바꿀 수 있습니다. 비밀번호 원문은 저장하지 않으며 계정·권한 변경은 모두 작업 로그에 남습니다.</p>
   <div class="tiles">
     <div class="tile"><span class="k">직원 · 부서</span><span class="v">${U.length}명</span><span class="s">${DEPTS.length}개 부서</span></div>
     <div class="tile"><span class="k">활성 계정</span><span class="v">${U.filter(u=>u.status==='활성').length}개</span><span class="s">비활성 ${U.filter(u=>u.status==='비활성').length} · 퇴사·휴직</span></div>
@@ -691,7 +691,7 @@ V.home=()=>{
 };
 
 V.collect=()=>`<h1>L1 재고 수집·검증</h1>
-  <p class="lead">국내외 3PL 파일을 받아 형식 → 의미 → 업무 순서로 검사합니다. 통과한 행만 전사 재고에 들어가고, 나머지는 격리해 담당자에게 넘깁니다. 검증에 실패하면 직전 검증본을 유지합니다.</p>
+  <p class="lead">국내외 3PL 파일을 받아 형식 → 의미 → 업무 순서로 검사합니다. 통과한 행만 전사 재고에 들어가고 나머지는 격리해 담당자에게 넘깁니다. 검증에 실패하면 직전 검증본을 유지합니다.</p>
   <div class="row" style="margin-bottom:14px"><button class="primary" id="runCol">지금 수집·검증</button><span class="muted">마지막 실행 ${S.collectRunAt} · 국내 WMS는 ${srcById('kr').every}분마다 자동 수집, 해외 파일은 도착하는 즉시 검증 · 연결 방식은 <a href="#sources">M1 연동·수집 관리</a>에서 봅니다</span></div>
   <div id="colProg" class="card progress" hidden></div>
   <div class="grid g3" style="margin-top:4px">${S.files.map(f=>`<div class="card stack" style="gap:8px">
@@ -740,7 +740,7 @@ V.hold=()=>{
   const k=S.holdSku&&S.skuMap[S.holdSku]?S.holdSku:'DD-LG-01';
   const sent=S.res.filter(r=>r.status==='전송완료').length;
   return `<h1>S2 보류 요청함</h1>
-  <p class="lead">요청하면 그 자리에서 요청 가능 수량에서 빠집니다. 3PL에는 하루 두 번(11시·16시) 모아서 보내고, 긴급 건만 비용 승인 후 건별로 보냅니다.</p>
+  <p class="lead">요청하면 그 자리에서 요청 가능 수량에서 빠집니다. 3PL에는 하루 두 번(11시·16시) 모아서 보내고 긴급 건만 비용 승인 후 건별로 보냅니다.</p>
   <div class="grid g2">
     <form class="card stack" id="holdForm"><h2 style="margin:0">보류 요청</h2>
       <div class="form">
@@ -786,7 +786,7 @@ V.ship=()=>{
   const res=S.orders.map(o=>({o,r:checkOrder(o)}));const cnt=t=>res.filter(x=>x.r.status===t).length;
   const short=S.lots.filter(l=>lotAvail(l)>0&&mLeft(l.exp)<12).sort((a,b)=>a.exp-b.exp);
   return `<h1>L2 출고 유효기간 검사</h1>
-  <p class="lead">3PL은 유효기간이 짧은 로트부터 내보냅니다(FEFO). 오늘 출고 지시를 FEFO 예상 로트로 돌려 보고, 채널 입고규정(잔여 유효기간)에 못 미치면 규정을 충족하는 로트를 지정합니다.</p>
+  <p class="lead">3PL은 유효기간이 짧은 로트부터 내보냅니다(FEFO). 오늘 출고 지시를 FEFO 예상 로트로 돌려 보고 채널 입고규정(잔여 유효기간)에 못 미치면 규정을 충족하는 로트를 지정합니다.</p>
   <div class="tiles"><div class="tile"><span class="k">통과</span><span class="v">${cnt('통과')}건</span></div><div class="tile alert"><span class="k">로트 지정 필요</span><span class="v">${cnt('로트 지정')}건</span><span class="s">지시서에 로트 번호를 넣어 전송</span></div><div class="tile alert"><span class="k">불가</span><span class="v">${cnt('불가')}건</span><span class="s">부분 출고 또는 채널 협의</span></div></div>
   <div class="row" style="margin-bottom:10px"><b>오늘 출고 지시 ${S.orders.length}건</b><span class="sp"></span><button class="primary" id="shipCSV">3PL 출고 지시서 보기</button></div>
   <div class="tw"><table><thead><tr><th>지시</th><th>채널 (규정)</th><th>SKU</th><th class="n">수량</th><th>FEFO 예상 로트</th><th>판정</th><th>조치</th></tr></thead><tbody>
@@ -807,7 +807,7 @@ V.channel=()=>{
   const nonDirect=S.channels.filter(c=>c.type!=='직매입');const chv=sum(nonDirect,c=>c.est*S.avgCost);const tot=kr+os+chv;
   const w=v=>(v/tot*100).toFixed(1);
   return `<h1>L4 채널 재고·자산</h1>
-  <p class="lead">채널로 보낸 수량 − 채널 판매(정산서) = 추정 채널 재고. 특정매입·위탁·플랫폼 센터 재고는 팔리기 전까지 회사 자산이고, 직매입은 납품 시 소유권이 넘어갑니다. 채널이 재고를 보고하면 매월 대조해 기말 실사 전에 차이를 찾습니다.</p>
+  <p class="lead">채널로 보낸 수량 − 채널 판매(정산서) = 추정 채널 재고. 특정매입·위탁·플랫폼 센터 재고는 팔리기 전까지 회사 자산이고 직매입은 납품 시 소유권이 넘어갑니다. 채널이 재고를 보고하면 매월 대조해 기말 실사 전에 차이를 찾습니다.</p>
   <div class="card"><div class="row" style="margin-bottom:8px"><b>회사 자산 재고 (원가 기준)</b><span class="sp"></span><b class="mono">${won(tot)}</b></div>
   <div class="bar"><div style="flex:${w(kr)};background:var(--accent);color:#fff">국내 창고 ${w(kr)}%</div><div style="flex:${w(os)};background:var(--teal);color:#fff">해외 3PL ${w(os)}%</div><div style="flex:${w(chv)};background:var(--warn-soft);color:var(--warn)">채널 보관 ${w(chv)}%</div></div>
   <div class="legend"><span><i style="background:var(--accent)"></i>국내 ${won(kr)}</span><span><i style="background:var(--teal)"></i>해외 ${won(os)}</span><span><i style="background:var(--warn-soft);border:1px solid var(--warn)"></i>채널 ${won(chv)} (평균 원가 ${fmt(S.avgCost)}원 적용)</span></div></div>
@@ -833,19 +833,19 @@ V.settle=()=>{
   <div class="tw"><table><thead><tr><th>제출 팀</th><th class="n">오차율(WAPE)</th><th class="n">편향</th><th>해석</th></tr></thead><tbody>
   ${S.acc.map(a=>`<tr><td>${a.team}</td><td class="n">${(a.wape*100).toFixed(1)}%</td><td class="n">${a.bias>0?'+':''}${(a.bias*100).toFixed(1)}%</td><td>${a.bias>.08?pill('과대 예측 경향','warn'):a.bias<-.08?pill('과소 예측 경향','warn'):pill('편향 작음','good')}</td></tr>`).join('')}
   </tbody></table></div>
-  <p class="muted" style="margin-top:8px">오차율은 구매의 안전재고 계산에 쓰이고, 편향은 팀별로 매월 공유합니다.</p>`;
+  <p class="muted" style="margin-top:8px">오차율은 구매의 안전재고 계산에 쓰이고 편향은 팀별로 매월 공유합니다.</p>`;
 };
 
 V.buy=()=>{
   const rows=buyRows();const risk=rows.filter(r=>r.risk==='폐기 위험').length;const bott=rows.filter(r=>r.lim).length;
   return `<h1>P1 발주 추천 · P2 부자재 소요</h1>
-  <p class="lead">필요량 = (리드타임 + 1개월) 예측 + 안전재고 − 가용(국내 요청 가능 + 해외) − 입고 예정. 필요량이 MOQ보다 작으면 MOQ로 올리고, 늘어난 물량이 유효기간 안에 팔리는지 봅니다. 발주 확정은 구매 담당이 합니다.</p>
+  <p class="lead">필요량 = (리드타임 + 1개월) 예측 + 안전재고 − 가용(국내 요청 가능 + 해외) − 입고 예정. 필요량이 MOQ보다 작으면 MOQ로 올리고 늘어난 물량이 유효기간 안에 팔리는지 봅니다. 발주 확정은 구매 담당이 합니다.</p>
   <div class="tiles"><div class="tile"><span class="k">발주 후보</span><span class="v">${rows.length}개 SKU</span></div><div class="tile alert"><span class="k">MOQ 때문에 폐기 위험</span><span class="v">${risk}개</span><span class="s">판매 가능 기간 = 유효기간 − 채널 규정 9개월</span></div><div class="tile alert"><span class="k">부자재가 병목</span><span class="v">${bott}개</span><span class="s">실제 리드타임이 늘어남</span></div></div>
   <div class="tw tall"><table><thead><tr><th>SKU</th><th class="n">월 예측</th><th class="n">가용</th><th class="n">입고 예정</th><th class="n">필요량</th><th class="n">MOQ</th><th class="n">추천 발주</th><th class="n">초과분</th><th class="n">소진</th><th>판정</th><th>부자재 병목</th><th class="n">실제 LT</th></tr></thead><tbody>
   ${rows.map(r=>`<tr><td><span class="mono">${r.s.sku}</span><br><span class="muted">${esc(r.s.name)}</span></td><td class="n">${fmt(r.fcM)}</td><td class="n">${fmt(r.avail)}</td><td class="n">${fmt(r.s.incoming)}</td><td class="n">${fmt(r.need)}</td><td class="n">${fmt(r.s.moq)}</td><td class="n"><b>${fmt(r.order)}</b></td><td class="n">${r.excess?fmt(r.excess):'0'}</td><td class="n">${r.cover.toFixed(1)}개월 / ${r.win}</td><td>${stPill(r.risk)}</td>
   <td>${r.lim?`${pill(r.lim.kind,'warn')} <span class="mono">${r.lim.code}</span> 부족 ${fmt(r.lim.short)}`:'<span class="muted">충분</span>'}</td><td class="n">${r.lim?`<b>${r.effLt}주</b> <span class="muted">(OEM ${r.s.lt})</span>`:r.s.lt+'주'}</td></tr>`).join('')}
   </tbody></table></div>
-  <div class="note acc" style="margin-top:10px">월 예측 = 국내 영업 + 해외팀 + BM 제출본 합계. 안전재고는 시연에서 월 예측의 50%로 두었고, 실제로는 S4 오차율로 정합니다.</div>`;
+  <div class="note acc" style="margin-top:10px">월 예측 = 국내 영업 + 해외팀 + BM 제출본 합계. 안전재고는 시연에서 월 예측의 50%로 두었고 실제로는 S4 오차율로 정합니다.</div>`;
 };
 
 V.close=()=>{
@@ -864,7 +864,7 @@ V.close=()=>{
 };
 
 V.master=()=>`<h1>M0 기준정보</h1>
-  <p class="lead">담당자 기억과 개인 파일에 흩어져 있던 기준을 한곳에 둡니다. 모든 도구가 이 값을 읽고, 바뀌면 누가 언제 무엇을 근거로 바꿨는지 남습니다.</p>
+  <p class="lead">담당자 기억과 개인 파일에 흩어져 있던 기준을 한곳에 둡니다. 모든 도구가 이 값을 읽고 바뀌면 누가 언제 무엇을 근거로 바꿨는지 남습니다.</p>
   <h2>채널 기준</h2>
   <div class="tw"><table><thead><tr><th>코드</th><th>채널</th><th>거래유형</th><th class="n">입고 규정(잔여 개월)</th><th>정산 주기</th><th>재고 보고</th><th>담당</th></tr></thead><tbody>
   ${S.channels.map(c=>`<tr><td class="mono">${c.id}</td><td>${esc(c.name)}</td><td>${c.type}</td><td class="n">${c.rule}</td><td>${c.cycle}</td><td>${c.type==='직매입'?'—':c.reports?'월 보고':'없음'}</td><td>${c.owner}</td></tr>`).join('')}</tbody></table></div>
@@ -881,7 +881,7 @@ V.sources=()=>{
   const ok=S.sources.filter(x=>x.status==='정상').length;const bad=S.sources.filter(x=>x.status!=='정상'&&x.status!=='병행 중').length;
   const auto=S.sources.filter(x=>x.mode==='정기').map(x=>({x,n:srcNext(x)})).sort((a,b)=>hm(a.n)-hm(b.n))[0];
   return `<h1>M1 연동·수집 관리</h1>
-  <p class="lead">원천 시스템은 바꾸지 않고, 시스템마다 가능한 방식으로 데이터를 끌어옵니다. 어떤 방식으로 들어오든 같은 검증(형식 → 의미 → 업무)을 거쳐 허브에 들어갑니다. 연결 관리는 AX팀이 합니다.</p>
+  <p class="lead">원천 시스템은 바꾸지 않고 시스템마다 가능한 방식으로 데이터를 끌어옵니다. 어떤 방식으로 들어오든 같은 검증(형식 → 의미 → 업무)을 거쳐 허브에 들어갑니다. 연결 관리는 AX팀이 합니다.</p>
   <div class="tiles">
     <div class="tile"><span class="k">연결된 원천</span><span class="v">${S.sources.length}개</span><span class="s">API ${S.sources.filter(x=>x.m==='API').length} · 파일 자동 수신 ${S.sources.filter(x=>['SFTP','메일함','공유 폴더','파일 내보내기'].includes(x.m)).length} · 크롬 확장 ${S.sources.filter(x=>x.m==='크롬 확장').length}</span></div>
     <div class="tile"><span class="k">정상</span><span class="v">${ok}개</span><span class="s">마지막 수집이 검증을 통과</span></div>
@@ -891,13 +891,13 @@ V.sources=()=>{
   <div class="row" style="margin-bottom:12px;flex-wrap:wrap;gap:10px">
     <button class="primary" id="pullAll">전체 지금 수집</button>
     <label class="row" style="gap:6px"><span class="muted">국내 WMS 자동 수집 주기</span><select id="cycle">${[10,30,60].map(n=>`<option value="${n}" ${srcById('kr').every===n?'selected':''}>${n}분</option>`).join('')}</select></label>
-    <span class="muted">지금 수집은 1~2분 안에 반영되고, 화면마다 기준 시각이 바뀝니다</span>
+    <span class="muted">지금 수집은 1~2분 안에 반영되고 화면마다 기준 시각이 바뀝니다</span>
   </div>
   <div class="tw"><table><thead><tr><th>원천 시스템</th><th>가져오는 데이터</th><th>연결 방식 (1단계 → 확장)</th><th>수집 방식</th><th>마지막</th><th>다음</th><th>상태</th><th></th></tr></thead><tbody>
   ${S.sources.map(x=>`<tr><td><b>${esc(x.sys)}</b><br><span class="muted">${esc(x.dir)}</span></td><td class="wrap">${esc(x.data)}</td><td>${mPill(x.m)}${x.next!=='—'?` <span class="muted">→ ${esc(x.next)}</span>`:''}</td><td>${esc(srcMode(x))}</td><td class="mono">${esc(x.last)}</td><td class="mono">${esc(srcNext(x))}</td><td>${S.busy===x.id?pill('수집 중…','info'):stPill(x.status)}${(()=>{const f=Object.values(S.fails).find(f=>!f.resolved&&f.area==='수집'&&(f.id==='f-ae'&&x.id==='ae'||f.id.startsWith('f-sg')&&x.id==='sg'));return f?` <button class="sm" data-showfail="${f.id}">고치기</button>`:''})()}</td><td>${x.pull?`<button class="sm" data-pull="${x.id}">지금 수집</button>`:'<span class="muted">자동만</span>'}</td></tr>`).join('')}
   </tbody></table></div>
   <div class="grid g3" style="margin-top:14px">
-    <div class="note"><b>API</b> · 원천이 API를 주면 n분마다 조회하고, 버튼으로 즉시 조회합니다. 보류·출고 지시처럼 쓰기가 필요한 곳도 API로 보냅니다</div>
+    <div class="note"><b>API</b> · 원천이 API를 주면 n분마다 조회하고 버튼으로 즉시 조회합니다. 보류·출고 지시처럼 쓰기가 필요한 곳도 API로 보냅니다</div>
     <div class="note"><b>파일 자동 수신</b> · SFTP·전용 메일함·공유 폴더에 파일이 들어오면 바로 검증합니다. 예정 시각까지 안 오면 재송부 요청을 보냅니다</div>
     <div class="note acc"><b>크롬 확장</b> · 웹 화면만 있는 시스템은 담당자 로그인 상태에서 확장이 내려받기·양식 입력을 대신합니다. API가 생기면 바꿉니다</div>
   </div>
@@ -912,7 +912,7 @@ V.log=()=>{
   const rows=L.filter(e=>(F==='all'||(F==='fail'&&e.result==='실패')||(F==='open'&&e.fid&&S.fails[e.fid]&&!S.fails[e.fid].resolved&&e.result==='실패')||(F==='fixed'&&['수정 후 반영','수동 처리','재시도 성공'].includes(e.result)))&&(!A||e.area===A));
   const areas=[...new Set(L.map(e=>e.area))];
   return `<h1>M2 작업 로그</h1>
-  <p class="lead">수집이든 보류·전송이든 허브에서 일어난 모든 작업을 시각·작업자·결과·원인과 함께 남깁니다. 실패한 작업은 반영하지 않고(직전 상태 유지), 작업한 사람에게 바로 원인을 알립니다. 고쳐서 자동으로 다시 돌리거나, 사람이 직접 처리할 수 있고, 그 처리도 기록됩니다.</p>
+  <p class="lead">수집이든 보류·전송이든 허브에서 일어난 모든 작업을 시각·작업자·결과·원인과 함께 남깁니다. 실패한 작업은 반영하지 않고(직전 상태 유지), 작업한 사람에게 바로 원인을 알립니다. 고쳐서 자동으로 다시 돌리거나 사람이 직접 처리할 수 있고 그 처리도 기록됩니다.</p>
   <div class="tiles">
     <div class="tile"><span class="k">오늘 작업</span><span class="v">${L.length}건</span><span class="s">자동 ${L.filter(e=>e.who.startsWith('시스템')).length} · 사람 ${L.filter(e=>!e.who.startsWith('시스템')).length}</span></div>
     <div class="tile"><span class="k">성공</span><span class="v">${L.filter(e=>e.result==='성공'||e.result==='부분 반영').length}건</span><span class="s">부분 반영 ${L.filter(e=>e.result==='부분 반영').length}건 포함</span></div>
@@ -926,9 +926,9 @@ V.log=()=>{
   ${rows.map(e=>`<tr><td class="mono">${e.at}</td><td>${esc(e.who)}</td><td>${esc(e.area)}</td><td class="wrap">${esc(e.action)}</td><td class="wrap mono" style="font-size:12px">${esc(e.target)}</td><td>${stPill(e.result)}</td><td class="wrap">${esc(e.reason)}</td><td>${e.fid&&S.fails[e.fid]?`<button class="sm" data-showfail="${e.fid}">${S.fails[e.fid].resolved?'내용':'고치기'}</button>`:''}</td></tr>`).join('')}
   </tbody></table></div>
   <div class="grid g3" style="margin-top:14px">
-    <div class="note"><b>실패하면 반영하지 않음</b> · 일부만 들어가는 일이 없도록 작업 단위로 처리하고, 직전 검증본·직전 상태를 유지합니다</div>
-    <div class="note"><b>작업한 사람에게 바로 알림</b> · 원인과 지금 상태를 보여 주고, 자동 작업이면 담당 부서에 알립니다</div>
-    <div class="note acc"><b>고치는 길 두 가지</b> · 값을 고쳐 같은 검증으로 자동 재실행하거나, 사람이 직접 처리하고 기록을 남깁니다</div>
+    <div class="note"><b>실패하면 반영하지 않음</b> · 일부만 들어가는 일이 없도록 작업 단위로 처리하고 직전 검증본·직전 상태를 유지합니다</div>
+    <div class="note"><b>작업한 사람에게 바로 알림</b> · 원인과 지금 상태를 보여 주고 자동 작업이면 담당 부서에 알립니다</div>
+    <div class="note acc"><b>고치는 길 두 가지</b> · 값을 고쳐 같은 검증으로 자동 재실행하거나 사람이 직접 처리하고 기록을 남깁니다</div>
   </div>`;
 };
 function pullSrc(id,quiet){
@@ -1025,7 +1025,7 @@ document.addEventListener('click',e=>{
   if(d.cancel){const r=S.res.find(x=>x.id===d.cancel);r.status='해제';r.note='3PL 전송 전 취소';alog({area:'보류',action:'보류 취소',target:r.id,ok:true,who:'국내영업',reason:'3PL 전송 전'});render();toast(`${r.id} 취소. 3PL에는 보내지 않았습니다`);return;}
   if(d.batch){const b=S.batches.find(x=>x.id===d.batch);modal(`3PL 보류 지시 파일 · ${b.id}`,`<p class="muted">시연 화면에서는 파일 다운로드 대신 내용을 보여줍니다. 실제로는 3PL 양식 엑셀로 내려받습니다.</p>`,batchCSV(b.list));return;}
   switch(t.id){
-    case 'pullAll':{if(S.busy)break;(async()=>{const bad=[];for(const x of S.sources.filter(x=>x.pull)){const ok=await pullSrc(x.id,true);if(!ok)bad.push(x.sys);}toast(bad.length?`전체 수집: 성공 ${S.sources.filter(x=>x.pull).length-bad.length}건 · 실패 ${bad.length}건 (${bad.join(', ')}). 실패 건은 반영하지 않았고, M2 작업 로그에서 고칠 수 있습니다`:'전체 수집 성공');})();break;}
+    case 'pullAll':{if(S.busy)break;(async()=>{const bad=[];for(const x of S.sources.filter(x=>x.pull)){const ok=await pullSrc(x.id,true);if(!ok)bad.push(x.sys);}toast(bad.length?`전체 수집: 성공 ${S.sources.filter(x=>x.pull).length-bad.length}건 · 실패 ${bad.length}건 (${bad.join(', ')}). 실패 건은 반영하지 않았고 M2 작업 로그에서 고칠 수 있습니다`:'전체 수집 성공');})();break;}
     case 'runCol':{const el=$('#colProg');el.hidden=false;const steps=['국내 3PL WMS 재고 조회 (크롬 확장, 확장 단계에서 API)','해외 3PL 파일 4개 수신 확인 (SFTP·메일함·포털·API), UAE 미수신','형식 검증: 필수 컬럼·자료형','의미 검증: 미등록 SKU·음수 행 격리','업무 검증: 전일 대비 급변·미수신 경고','검증본 저장 → 전사 재고 갱신'];let i=0;el.innerHTML='';
       const tick=()=>{if(i<steps.length){el.insertAdjacentHTML('beforeend',`<div>✓ ${steps[i]}</div>`);i++;setTimeout(tick,350);}else{runCollect();S.collectRunAt=S.clock;const q=S.files.reduce((t,f)=>t+f.issues.filter(i=>i.q).length,0);alog({area:'수집',action:'지금 수집·검증 (L1)',target:'국내·해외 3PL',result:q?'부분 반영':'성공',who:'SCM물류',reason:q?`격리 ${q}행은 반영 안 함 · 나머지 반영`:'모든 행 반영'});setTimeout(()=>{render();toast(q?`수집·검증 완료. 격리 ${q}행은 반영하지 않았습니다. 카드의 고치기에서 바로 고칠 수 있습니다`:'수집·검증 완료. 모든 행 반영');},300);}};tick();break;}
     case 'cutBtn':{const list=S.res.filter(r=>r.status==='예약확정');const id=`B-1109-${S.nextCut.slice(0,2)}`;
@@ -1061,7 +1061,7 @@ document.addEventListener('click',e=>{
       modal('3PL 출고 지시서 (로트 지정 포함)','<p class="muted">로트 지정 건은 FEFO 대신 지정 로트로 피킹하도록 3PL에 보냅니다.</p>',toCSV(rows));break;}
     case 'pkgBtn':{const rows=[['채널','거래유형','10월 출고수량','매출인식수량','매출액(추정)','기말 회사자산(원가)','근거']];S.channels.forEach(c=>{const q=c.type==='직매입'?c.shipOct:c.soldOct;rows.push([c.name,c.type,c.shipOct,q,q*c.price,c.type==='직매입'?'':Math.round(c.est*S.avgCost),c.type==='직매입'?'출고증빙·매입확정서':'정산서·L4 추정']);});
       alog({area:'마감',action:'10월 마감 근거 묶음 생성',target:`채널 ${S.channels.length}곳`,ok:true,who:'회계'});render();
-      modal('10월 마감 근거 묶음','<p class="muted">매출결의 첨부 양식 그대로 나갑니다. 크롬 확장(A3)이 이 값으로 그룹웨어 양식 칸을 채우고, 제출은 사람이 누릅니다.</p>',toCSV(rows));break;}
+      modal('10월 마감 근거 묶음','<p class="muted">매출결의 첨부 양식 그대로 나갑니다. 크롬 확장(A3)이 이 값으로 그룹웨어 양식 칸을 채우고 제출은 사람이 누릅니다.</p>',toCSV(rows));break;}
     case 'costReq':{const rows=[['로트','SKU','품명','제조일','입고수량','임시원가 제안','요청']];S.lots.filter(l=>l.cost==null).forEach(l=>{const s=S.skuMap[l.sku];rows.push([l.lot,l.sku,s.name,fmtD(l.mfg),l.onhand,s.cost,'확정 원가 회신 요청 (기한 11/14)']);});
       alog({area:'원가',action:'원가 확정 요청 목록 생성',target:`로트 ${rows.length-1}개`,ok:true,who:'회계',reason:'구매에 요청'});render();
       modal('구매 원가 확정 요청 목록','',toCSV(rows));break;}
