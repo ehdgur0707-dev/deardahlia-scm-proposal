@@ -136,6 +136,7 @@ textarea.out{width:100%;min-height:240px;font-family:var(--mono);font-size:12px;
     <p class="grp">SCM 물류</p>
     <a href="#collect" data-v="collect"><span class="code">L1</span>재고 수집·검증</a>
     <a href="#ship" data-v="ship"><span class="code">L2</span>출고 유효기간 검사</a>
+    <a href="#ledger" data-v="ledger"><span class="code">L3</span>로트별 수불부</a>
     <a href="#channel" data-v="channel"><span class="code">L4</span>채널 재고·자산</a>
     <p class="grp">영업</p>
     <a href="#stock" data-v="stock"><span class="code">S1</span>재고 바로보기</a>
@@ -143,6 +144,7 @@ textarea.out{width:100%;min-height:240px;font-family:var(--mono);font-size:12px;
     <a href="#settle" data-v="settle"><span class="code">S3</span>정산 대사·예측</a>
     <p class="grp">구매</p>
     <a href="#buy" data-v="buy"><span class="code">P1</span>발주 추천·부자재</a>
+    <a href="#oem" data-v="oem"><span class="code">P3</span>OEM 정산 대사</a>
     <p class="grp">회계</p>
     <a href="#close" data-v="close"><span class="code">A1</span>월마감·원가</a>
     <p class="grp">공통</p>
@@ -331,6 +333,25 @@ function gen(){
     {at:DS(-12),item:'MOQ · 립 펜슬',change:'3,000 → 5,000',by:'구매',src:`OEM 견적서 ${MD(-13)}`},
     {at:DS(-25),item:'거래유형 · 해외 백화점 FR',change:'특정매입 → 위탁',by:'회계',src:'계약 변경 합의서'},
   ];
+  /* 예측 버전 · 선발주 · 신제품 · OEM 정산 · 수불부 (별도 시드로 기존 데이터 유지) */
+  {const R2=mulberry32(4242);const r2=(a,b)=>Math.floor(R2()*(b-a+1))+a;
+   S.fver={id:`F-${yymm(TODAY)}`,locked:`${pad2(TODAY.getMonth()+1)}/03 18:00`,teams:'국내영업·해외팀·BM',prev:`F-${yymm(new Date(TODAY.getFullYear(),TODAY.getMonth()-1,1))}`};
+   S.poHist={linked:14,total:16};
+   S.preorders=[{id:'EO-01',sku:'DD-LT-02',qty:3000,at:MD(-12),by:'서지호(구매)',appr:'오태민(구매 팀장)',reason:'연말 행사 물량 선확보 (예측 제출 전)',fc:2400,status:'대사 완료'},
+                {id:'EO-02',sku:'DD-CU-02',qty:3000,at:MD(-5),by:'신유나(구매)',appr:'오태민(구매 팀장)',reason:'부자재 선확보에 맞춘 완제품 선발주',fc:1500,status:'대사 완료'}];
+   S.newprod={id:'NP-01',name:'립 글레이즈 신규 4색',qty:12000,by:'장예린(BM)',basis:'유사 SKU 립 글레이즈 01~03호 출시 8주 판매량 × 입점 채널 6곳',status:'경영진 확정 대기'};
+   const OEM={립:'OEM 코스랩',베이스:'OEM 한빛코스메틱',아이:'OEM 코스랩',치크:'OEM 코스랩',스킨케어:'OEM 그린바이오'};
+   const recent=S.lots.filter(l=>mLeft(l.exp)>0).sort((a,b)=>b.mfg-a.mfg).slice(0,14);
+   S.oem=recent.map((l,i)=>{const sk=S.skuMap[l.sku];const price=sk.cost;let q=l.onhand,pr=price,st='일치';
+     if(i===2){q=l.onhand+100;st='수량 차이';} if(i===5){pr=price+50;st='단가 차이';} if(i===8){q=Math.max(10,l.onhand-40);st='수량 차이';} if(i===11){pr=price+30;st='단가 차이';}
+     return {id:'OI-'+(i+1),oem:OEM[sk.cat],lot:l.lot,sku:l.sku,inQty:l.onhand,price,billQty:q,billPrice:pr,status:st,state:st==='일치'?'일치':'미확정'};});
+   const lotsL=S.lots.slice(0,S.lots.length);
+   S.ledger=lotsL.map((l,i)=>{const inThis=l.mfg.getMonth()===TODAY.getMonth()&&l.mfg.getFullYear()===TODAY.getFullYear()?l.onhand:0;
+     const out={hb:r2(0,6)*10,dept:r2(0,4)*10,online:r2(0,8)*10,os:r2(0,5)*10};const adj=i%37===5?-10:0;
+     const end=l.onhand;const outSum=out.hb+out.dept+out.online+out.os;const begin=end+outSum-inThis-adj;
+     return {lot:l.lot,sku:l.sku,begin,inQty:inThis,out,adj,end,tpl:end,note:''};});
+   [[7,30,'백화점 B 출고 30개 기입 누락 (3PL은 출고 처리)'],[63,-20,'반품 입고 20개 미기입'],[148,-40,'채널 이동 40개 출고 이중 기입']].forEach(([i,d,n])=>{const g=S.ledger[i];if(g){g.tpl=g.end-d;g.note=n;}});
+  }
   /* 연동 원천 (1단계 연결 방식과 확장 단계 목표) */
   S.sources=[
     {id:'kr',sys:'국내 3PL WMS',data:'로트별 재고·유효기간·보류',m:'크롬 확장',next:'WMS API',mode:'정기',every:30,last:'09:30',status:'정상',rows:296,dir:'읽기 · 보류 지시 쓰기(11·16시 배치)',pull:true},
@@ -390,12 +411,12 @@ function gen(){
   S.actlog.sort((a,b)=>a.at<b.at?1:a.at>b.at?-1:0);
 }
 /* ---------- 계정·권한 ---------- */
-const PSCR=[['home','오늘 현황'],['collect','L1 재고 수집·검증'],['ship','L2 출고 유효기간 검사'],['channel','L4 채널 재고·자산'],['stock','S1 재고 바로보기'],['hold','S2 보류 요청함'],['settle','S3 정산 대사·예측'],['buy','P1 발주 추천·부자재'],['close','A1 월마감·원가'],['master','M0 기준정보'],['sources','M1 연동·수집 관리'],['log','M2 작업 로그'],['accounts','M3 계정·권한 관리']];
+const PSCR=[['home','오늘 현황'],['collect','L1 재고 수집·검증'],['ship','L2 출고 유효기간 검사'],['channel','L4 채널 재고·자산'],['stock','S1 재고 바로보기'],['hold','S2 보류 요청함'],['settle','S3 정산 대사·예측'],['buy','P1 발주 추천·부자재'],['close','A1 월마감·원가'],['master','M0 기준정보'],['sources','M1 연동·수집 관리'],['log','M2 작업 로그'],['accounts','M3 계정·권한 관리'],['ledger','L3 로트별 수불부'],['oem','P3 OEM 정산 대사']];
 const PIDX=Object.fromEntries(PSCR.map(([k],i)=>[k,i]));const PNAME=Object.fromEntries(PSCR);
 const LV=['없음','보기','편집'];
 const DEPTS=['국내영업','해외팀','BM','구매','SCM물류','회계','AX팀'];
 /* 화면 순서: 현황 L1 L2 L4 S1 S2 S3 P1 A1 M0 M1 M2 M3 · 0 없음 1 보기 2 편집 */
-const TPL0={국내영업:'2011122101010',해외팀:'2011121101110',BM:'2000121101010',구매:'2000101212010',SCM물류:'2222121101220',회계:'2001001021010',AX팀:'2222222222222'};
+const TPL0={국내영업:'201112210101010',해외팀:'201112110111000',BM:'200012110101000',구매:'200010121201012',SCM물류:'222212110122020',회계:'200100102101011',AX팀:'222222222222222'};
 function hh(str){let h=0x811c9dc5;for(const c of str){h^=c.codePointAt(0);h=Math.imul(h,0x01000193)>>>0;}return 'fnv1a:'+h.toString(16).padStart(8,'0');}
 const curUser=()=>S.users.find(u=>u.id===S.me);
 const meLabel=()=>{const u=curUser();return u?`${u.name}(${u.dept})`:'—';};
@@ -515,7 +536,7 @@ function accountsView(){const U=S.users;
   </div>
   <div class="row" style="gap:8px;margin-bottom:12px"><button class="${S.accTab==='users'?'primary':''}" data-acctab="users">직원 계정</button><button class="${S.accTab==='tpl'?'primary':''}" data-acctab="tpl">부서 기본 권한</button><button class="${S.accTab==='act'?'primary':''}" data-acctab="act">계정별 활동</button><span class="sp"></span><button class="primary" data-acc="new|">직원 등록</button></div>
   ${S.accTab==='tpl'?tplView():S.accTab==='act'?actView():usersView()}`;}
-const EDIT_SEL=['[data-done]','[data-map]','[data-approve]','[data-release]','[data-cancel]','[data-pull]','#pullAll','#cycle','#runCol','#cutBtn','#reflectBtn','#raceBtn','#shipCSV','#pkgBtn','#costReq','#holdForm input','#holdForm select','#holdForm button','[data-acc]','input[data-perm]','input[data-tpl]'].map(x=>'#view '+x).join(',');
+const EDIT_SEL=['[data-oem]','[data-led]','[data-np]','[data-po]','[data-done]','[data-map]','[data-approve]','[data-release]','[data-cancel]','[data-pull]','#pullAll','#cycle','#runCol','#cutBtn','#reflectBtn','#raceBtn','#shipCSV','#pkgBtn','#costReq','#holdForm input','#holdForm select','#holdForm button','[data-acc]','input[data-perm]','input[data-tpl]'].map(x=>'#view '+x).join(',');
 function lockEdits(){document.querySelectorAll(EDIT_SEL).forEach(el=>{el.disabled=true;el.title='편집 권한이 없습니다';});}
 function deny(sc,what){alog({area:'권한',action:what,target:PNAME[sc]||sc,ok:false,who:'담당자',reason:'편집 권한 없음 → 실행 안 함'});render();toast(`${PNAME[sc]||sc} 편집 권한이 없어 실행하지 않았습니다. AX팀에 권한을 요청하세요`);}
 const AREA_SC={수집:'collect',보류:'hold'};
@@ -668,6 +689,8 @@ function exceptions(){
   settleRows().filter(r=>r.state!=='일치').forEach(r=>ex.push({id:'set-'+r.code,area:'S3 정산',title:`H&B 체인 A ${r.state}`,detail:r.state==='매핑 필요'?`채널코드 ${r.code} '${r.name}'`:`${r.mapped} 채널 ${fmt(r.chQty)} vs 출고 ${fmt(r.ours)} (${r.diff>0?'+':''}${r.diff})`,owner:'국내영업',due:MD(3),go:'settle'}));
   S.channels.filter(c=>c.diff).forEach(c=>ex.push({id:'ch-'+c.id,area:'L4 채널',title:`${c.name} 재고 차이`,detail:`추정 ${fmt(c.est)} vs 채널 보고 ${fmt(c.reported)} (${c.diff})`,owner:'SCM 물류',due:MD(4),go:'channel'}));
   S.lots.filter(l=>l.cost==null).forEach(l=>ex.push({id:'cost-'+l.lot,area:'A2 원가',title:'신규 로트 원가 미확정',detail:`${l.sku} 로트 ${l.lot}`,owner:'구매',due:MD(5),go:'close'}));
+  S.oem.filter(o=>o.state!=='일치'&&o.state!=='확정').forEach(o=>ex.push({id:'oem-'+o.id,area:'P3 OEM',title:`${o.oem} 청구 ${o.status}`,detail:`${o.lot} ${o.sku} · 입고 ${fmt(o.inQty)}개 ${fmt(o.price)}원 vs 청구 ${fmt(o.billQty)}개 ${fmt(o.billPrice)}원`,owner:'구매',due:MD(4),go:'oem'}));
+  S.ledger.filter(g=>g.tpl!==g.end&&!g.done).forEach(g=>ex.push({id:'led-'+g.lot,area:'L3 수불부',title:`${g.lot} 장부와 3PL 재고 차이`,detail:`계산 기말 ${fmt(g.end)} vs 3PL ${fmt(g.tpl)} · ${g.note}`,owner:'SCM 물류',due:MD(2),go:'ledger'}));
   Object.values(S.fails).filter(f=>!f.resolved&&!f.l1).forEach(f=>ex.push({id:'fail-'+f.id,area:'실패 작업',title:`${f.action} 실패`,detail:`${f.target} · ${f.reason}`,owner:f.owner,due:'오늘',go:'log'}));
   S.res.filter(r=>r.status==='반영확인'&&r.end<=fmtD(addDays(TODAY,1))).forEach(r=>ex.push({id:'exp-'+r.id,area:'S2 보류',title:`${r.id} 보류 만료 임박`,detail:`${r.sku} ${fmt(r.qty)}개 · 종료 ${r.end}. 해제 또는 연장`,owner:'국내영업',due:r.end,go:'hold'}));
   return ex;
@@ -682,7 +705,7 @@ $('#mClose').onclick=()=>$('#modal').hidden=true;
 $('#modal').addEventListener('click',e=>{if(e.target.id==='modal')$('#modal').hidden=true;});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')$('#modal').hidden=true;});
 const pill=(t,c)=>`<span class="pill ${c}">${esc(t)}</span>`;
-const stPill=s=>pill(s,{정상:'good',통과:'good',일치:'good',적정:'good',반영확인:'good','일부 격리':'bad',미수신:'bad',불가:'bad','폐기 위험':'bad','수량 차이':'bad',반려:'bad',경고:'warn','로트 지정':'warn',주의:'warn','매핑 필요':'warn','긴급 승인 대기':'warn',예약확정:'acc',전송완료:'info',해제:'mute',실패:'bad',성공:'good','부분 반영':'warn','수정 후 반영':'good','수동 처리':'info','재시도 성공':'good','처리 완료':'good'}[s]||'mute');
+const stPill=s=>pill(s,{정상:'good',통과:'good',일치:'good',적정:'good',반영확인:'good','일부 격리':'bad',미수신:'bad',불가:'bad','폐기 위험':'bad','수량 차이':'bad',반려:'bad',경고:'warn','로트 지정':'warn',주의:'warn','매핑 필요':'warn','긴급 승인 대기':'warn',예약확정:'acc',전송완료:'info',해제:'mute','단가 차이':'warn',미확정:'warn','확인 요청':'info',확정:'good','경영진 확정 대기':'warn','경영진 확정':'good','대사 완료':'good','차이 있음':'bad',실패:'bad',성공:'good','부분 반영':'warn','수정 후 반영':'good','수동 처리':'info','재시도 성공':'good','처리 완료':'good'}[s]||'mute');
 const remPill=m=>pill(`${m.toFixed(1)}개월`,m<6?'bad':m<12?'warn':'good');
 const chName=id=>S.chMap[id]?S.chMap[id].name:id;
 const toCSV=rows=>rows.map(r=>r.map(v=>{const s=String(v??'');return/[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}).join(',')).join('\n');
@@ -887,7 +910,19 @@ V.buy=()=>{
   ${rows.map(r=>`<tr><td><span class="mono">${r.s.sku}</span><br><span class="muted">${esc(r.s.name)}</span></td><td class="n">${fmt(r.fcM)}</td><td class="n">${fmt(r.avail)}</td><td class="n">${fmt(r.s.incoming)}</td><td class="n">${fmt(r.need)}</td><td class="n">${fmt(r.s.moq)}</td><td class="n"><b>${fmt(r.order)}</b></td><td class="n">${r.excess?fmt(r.excess):'0'}</td><td class="n">${r.cover.toFixed(1)}개월 / ${r.win}</td><td>${stPill(r.risk)}</td>
   <td>${r.lim?`${pill(r.lim.kind,'warn')} <span class="mono">${r.lim.code}</span> 부족 ${fmt(r.lim.short)}`:'<span class="muted">충분</span>'}</td><td class="n">${r.lim?`<b>${r.effLt}주</b> <span class="muted">(OEM ${r.s.lt})</span>`:r.s.lt+'주'}</td></tr>`).join('')}
   </tbody></table></div>
-  <div class="note acc" style="margin-top:10px">월 예측 = 국내 영업 + 해외팀 + BM 제출본 합계. 안전재고는 시연에서 월 예측의 50%로 두었고 실제로는 S4 오차율로 정합니다.</div>`;
+  <div class="note acc" style="margin-top:10px">월 예측 = 국내 영업 + 해외팀 + BM 제출본 합계 (예측 버전 <span class="mono">${S.fver.id}</span>). 안전재고는 시연에서 월 예측의 50%로 두었고 실제로는 S4 오차율로 정합니다.</div>
+  <h2 style="margin-top:20px">예측 버전과 발주 연결</h2>
+  <div class="tiles"><div class="tile"><span class="k">이번 달 예측 버전</span><span class="v mono">${S.fver.id}</span><span class="s">${S.fver.locked} 잠금 · ${S.fver.teams} 제출본</span></div>
+    <div class="tile"><span class="k">예측 반영률 (지난달 발주)</span><span class="v">${Math.round(S.poHist.linked/S.poHist.total*100)}%</span><span class="s">${S.poHist.total}건 중 ${S.poHist.linked}건이 ${S.fver.prev}로 계산됨</span></div>
+    <div class="tile ${S.preorders.length?'alert':''}"><span class="k">예외 발주 (예측 제출 전)</span><span class="v">${S.preorders.length}건</span><span class="s">승인자 기록 · 예측 잠금 후 자동 대사</span></div></div>
+  <p class="muted" style="margin:0 0 8px">위 추천 표의 모든 행은 <span class="mono">${S.fver.id}</span>로 계산했습니다. 확정한 발주서에도 이 버전 번호가 남아 나중에 예측이 발주에 얼마나 반영됐는지 셀 수 있습니다.</p>
+  <div class="tw"><table><thead><tr><th>번호</th><th>SKU</th><th class="n">선발주</th><th>등록 · 승인</th><th>사유</th><th class="n">잠긴 예측 기준 필요량</th><th class="n">차이</th><th>대사</th></tr></thead><tbody>
+  ${S.preorders.map(o=>`<tr><td class="mono">${o.id}</td><td class="mono">${o.sku}</td><td class="n">${fmt(o.qty)}</td><td>${esc(o.by)} · ${o.at}<br><span class="muted">승인 ${esc(o.appr)}</span></td><td class="wrap">${esc(o.reason)}</td><td class="n">${fmt(o.fc)}</td><td class="n">${o.qty-o.fc>0?'+':''}${fmt(o.qty-o.fc)} (${Math.round((o.qty-o.fc)/o.fc*100)}%)</td><td>${stPill(o.status)}</td></tr>`).join('')}
+  </tbody></table></div>
+  <h2 style="margin-top:20px">신제품 초도 물량</h2>
+  <div class="card stack"><div class="row"><b>${esc(S.newprod.name)}</b><span class="sp"></span>${stPill(S.newprod.status)}</div>
+    <div class="row" style="gap:20px;flex-wrap:wrap"><span>BM 제안 <b class="mono">${fmt(S.newprod.qty)}</b>개</span><span class="muted">제안 ${esc(S.newprod.by)}</span><span class="muted">근거 ${esc(S.newprod.basis)}</span></div>
+    <div class="row">${S.newprod.status==='경영진 확정'?`<span class="muted">확정 수량을 신제품 예측 버전 <span class="mono">${S.newprod.ver}</span>으로 잠갔습니다. 출시 8주 후 실적과 비교합니다.</span>`:`<button class="primary sm" data-np="ok">경영진 확정 (전자결재 승인 반영)</button><span class="muted">확정되면 이 수량이 신제품 예측 버전으로 잠깁니다</span>`}</div></div>`;
 };
 
 V.close=()=>{
@@ -895,9 +930,10 @@ V.close=()=>{
   return `<h1>A1 월마감 근거 묶음 · A2 원가 미확정</h1>
   <p class="lead">${PML} 마감에 필요한 채널별 출고·매출·회사 자산 재고를 한 번에 묶습니다. 영업과 물류에 근거를 따로 요청하지 않아도 됩니다.</p>
   <div class="row" style="margin-bottom:10px"><b>${PM().y}년 ${PML} 마감</b><span class="sp"></span><button class="primary" id="pkgBtn">근거 묶음 미리보기</button></div>
-  <div class="tw"><table><thead><tr><th>채널</th><th>거래유형</th><th>정산 주기</th><th class="n">${PML} 출고</th><th class="n">${PML} 매출 인식 수량</th><th class="n">매출액(추정)</th><th class="n">기말 회사 자산</th><th>근거</th></tr></thead><tbody>
-  ${S.channels.map(c=>{const q=c.type==='직매입'?c.shipOct:c.soldOct;return `<tr><td>${esc(c.name)}</td><td>${pill(c.type,c.type==='직매입'?'mute':'acc')}</td><td>${c.cycle}</td><td class="n">${fmt(c.shipOct)}</td><td class="n">${fmt(q)}</td><td class="n">${won(q*c.price)}</td><td class="n">${c.type==='직매입'?'—':won(c.est*S.avgCost)}</td><td class="mono muted">${c.type==='직매입'?'출고증빙·매입확정서':'정산서·L4 추정'}</td></tr>`;}).join('')}
+  <div class="tw"><table><thead><tr><th>채널</th><th>거래유형</th><th>정산 주기</th><th class="n">${PML} 출고</th><th class="n">${PML} 매출 인식 수량</th><th class="n">매출액(추정)</th><th class="n">세금계산서 공급가액</th><th class="n">부가세</th><th class="n">기말 회사 자산</th><th>근거</th></tr></thead><tbody>
+  ${S.channels.map(c=>{const q=c.type==='직매입'?c.shipOct:c.soldOct;return `<tr><td>${esc(c.name)}</td><td>${pill(c.type,c.type==='직매입'?'mute':'acc')}</td><td>${c.cycle}</td><td class="n">${fmt(c.shipOct)}</td><td class="n">${fmt(q)}</td><td class="n">${won(q*c.price)}</td><td class="n">${won(q*c.price)}</td><td class="n">${won(Math.round(q*c.price*0.1))}</td><td class="n">${c.type==='직매입'?'—':won(c.est*S.avgCost)}</td><td class="mono muted">${c.type==='직매입'?'출고증빙·매입확정서':'정산서·L4 추정'}</td></tr>`;}).join('')}
   </tbody></table></div>
+  <p class="muted" style="margin:8px 0 0">세금계산서는 회계가 ERP에서 발행합니다. 이 화면은 발행에 필요한 공급가액·부가세와 근거까지 자동으로 만듭니다.</p>
   <h2 style="margin-top:20px">A2 원가 미확정 로트 ${miss.length}개</h2>
   <div class="tw"><table><thead><tr><th>로트</th><th>SKU</th><th>제조일</th><th class="n">입고 수량</th><th class="n">임시 원가 제안</th><th>근거</th></tr></thead><tbody>
   ${miss.map(l=>{const s=S.skuMap[l.sku];return `<tr><td class="mono">${l.lot}</td><td class="mono">${l.sku}</td><td class="mono">${fmtD(l.mfg)}</td><td class="n">${fmt(l.onhand)}</td><td class="n">${fmt(s.cost)}</td><td class="muted">OEM 계약 단가 + 부자재 단가(직전 로트)</td></tr>`;}).join('')}
@@ -995,6 +1031,30 @@ function pullSrc(id,quiet){
     S.srcLog.unshift({at:S.clock,id,msg});S.busy=null;render();if(!quiet)toast(`${x.sys}: ${msg}`);res(true);},900));
 }
 
+V.oem=()=>{const O=S.oem;const amt=o=>o.inQty*o.price, bill=o=>o.billQty*o.billPrice;
+  const diff=O.filter(o=>o.status!=='일치');const open=O.filter(o=>o.state==='미확정'||o.state==='확인 요청');
+  return `<h1>P3 OEM 정산 대사</h1>
+  <p class="lead">${PML} OEM 청구서를 입고 실적(수량)과 계약 단가로 계산한 금액과 로트별로 대조합니다. 맞지 않는 행만 남기고 확인 요청과 확정 과정을 기록합니다. 정산 확정은 구매가 합니다.</p>
+  <div class="tiles"><div class="tile"><span class="k">청구 행</span><span class="v">${O.length}건</span><span class="s">${[...new Set(O.map(o=>o.oem))].join(' · ')}</span></div>
+    <div class="tile"><span class="k">입고 × 계약 단가</span><span class="v">${won(sum(O,amt))}</span></div><div class="tile"><span class="k">OEM 청구 금액</span><span class="v">${won(sum(O,bill))}</span><span class="s">차이 ${won(sum(O,bill)-sum(O,amt))}</span></div>
+    <div class="tile ${open.length?'alert':''}"><span class="k">확정 전 차이</span><span class="v">${open.length}건</span><span class="s">수량 ${diff.filter(o=>o.status==='수량 차이').length} · 단가 ${diff.filter(o=>o.status==='단가 차이').length}</span></div></div>
+  <div class="tw"><table><thead><tr><th>OEM</th><th>로트</th><th>SKU</th><th class="n">입고 수량</th><th class="n">계약 단가</th><th class="n">청구 수량</th><th class="n">청구 단가</th><th class="n">차이 금액</th><th>판정</th><th>상태</th><th></th></tr></thead><tbody>
+  ${O.map(o=>`<tr class="${o.status!=='일치'&&o.state!=='확정'?'ovrow':''}"><td>${esc(o.oem)}</td><td class="mono">${o.lot}</td><td class="mono">${o.sku}</td><td class="n">${fmt(o.inQty)}</td><td class="n">${fmt(o.price)}</td><td class="n">${o.billQty!==o.inQty?`<b style="color:var(--bad)">${fmt(o.billQty)}</b>`:fmt(o.billQty)}</td><td class="n">${o.billPrice!==o.price?`<b style="color:var(--bad)">${fmt(o.billPrice)}</b>`:fmt(o.billPrice)}</td><td class="n">${won(bill(o)-amt(o))}</td><td>${stPill(o.status)}</td><td>${stPill(o.state)}${o.result?`<br><span class="muted" style="font-size:12px">${esc(o.result)}</span>`:''}</td>
+  <td>${o.status==='일치'?'':o.state==='미확정'?`<button class="sm" data-oem="ask|${o.id}">OEM에 확인 요청</button>`:o.state==='확인 요청'?`<div class="row" style="gap:4px;flex-wrap:nowrap"><button class="sm" data-oem="ours|${o.id}">입고·계약 기준 확정</button><button class="sm" data-oem="theirs|${o.id}">청구 기준 확정</button></div>`:''}</td></tr>`).join('')}
+  </tbody></table></div>
+  <div class="note acc" style="margin-top:10px">단가 이견은 계약 단가표(M0)를 기준으로 판정하고, 청구 기준으로 확정하면 근거를 남겨 다음 계약 갱신 때 참고합니다. 확정 결과는 A1 월마감 근거와 A2 원가에 그대로 씁니다.</div>`;};
+V.ledger=()=>{const G=S.ledger;const only=S.ledOnly!==false;const q=(S.ledQ||'').trim().toUpperCase();
+  const bad=G.filter(g=>g.tpl!==g.end);const rows=G.filter(g=>(!only||g.tpl!==g.end)&&(!q||g.sku.includes(q)||g.lot.includes(q))).slice(0,60);
+  return `<h1>L3 로트별 수불부</h1>
+  <p class="lead">기초 + 입고 − 출고 ± 조정 = 기말을 로트마다 자동으로 계산하고 3PL 재고와 맞지 않는 줄만 보여 줍니다. 채널별 출고는 출고 지시와 정산 데이터에서 자동으로 채우므로 사람이 나눠 손으로 적지 않습니다.</p>
+  <div class="tiles"><div class="tile"><span class="k">로트</span><span class="v">${G.length}개</span><span class="s">이번 달 기준</span></div><div class="tile"><span class="k">장부 = 3PL</span><span class="v">${G.length-bad.length}개</span></div>
+    <div class="tile ${bad.filter(g=>!g.done).length?'alert':''}"><span class="k">차이 있는 로트</span><span class="v">${bad.filter(g=>!g.done).length}개</span><span class="s">원인 후보를 함께 표시</span></div><div class="tile"><span class="k">채널별 출고 기입</span><span class="v">자동</span><span class="s">H&B · 백화점·면세 · 온라인 · 해외</span></div></div>
+  <div class="row" style="gap:10px;margin-bottom:10px"><input id="ledQ" placeholder="SKU·로트 검색" value="${esc(S.ledQ||'')}" style="width:200px"><label class="row" style="gap:6px;font-size:13px"><input type="checkbox" id="ledOnly" ${only?'checked':''}> 차이 있는 줄만</label><span class="muted">${rows.length}줄${!only&&G.length>60?' (앞 60줄)':''}</span></div>
+  <div class="tw"><table><thead><tr><th>로트</th><th>SKU</th><th class="n">기초</th><th class="n">입고</th><th class="n">출고 H&B</th><th class="n">백화점·면세</th><th class="n">온라인</th><th class="n">해외</th><th class="n">조정</th><th class="n">계산 기말</th><th class="n">3PL 재고</th><th>차이 · 원인 후보</th><th></th></tr></thead><tbody>
+  ${rows.map(g=>{const d=g.tpl-g.end;return `<tr class="${d&&!g.done?'ovrow':''}"><td class="mono">${g.lot}</td><td class="mono">${g.sku}</td><td class="n">${fmt(g.begin)}</td><td class="n">${fmt(g.inQty)}</td><td class="n">${fmt(g.out.hb)}</td><td class="n">${fmt(g.out.dept)}</td><td class="n">${fmt(g.out.online)}</td><td class="n">${fmt(g.out.os)}</td><td class="n">${g.adj?fmt(g.adj):'0'}</td><td class="n"><b>${fmt(g.end)}</b></td><td class="n">${fmt(g.tpl)}</td>
+  <td class="wrap">${d?`<b style="color:var(--bad)">${d>0?'+':''}${fmt(d)}</b> ${esc(g.note)}${g.done?`<br><span class="muted" style="font-size:12px">${esc(g.done)}</span>`:''}`:'<span class="muted">일치</span>'}</td><td>${d&&!g.done?`<button class="sm" data-led="${g.lot}">조정 기입·확정</button>`:''}</td></tr>`;}).join('')||'<tr><td colspan="13" class="muted">조건에 맞는 로트가 없습니다</td></tr>'}
+  </tbody></table></div>`;};
+
 /* ---------- 라우팅·이벤트 ---------- */
 function render(){
   const v=(location.hash||'#home').slice(1);const view=V[v]?v:'home';
@@ -1015,6 +1075,7 @@ const go=v=>{if(location.hash==='#'+v)render();else location.hash=v;};
 document.addEventListener('input',e=>{
   if(e.target.id==='q'){S.q=e.target.value;const pos=e.target.selectionStart;render();const q=$('#q');q.focus();q.setSelectionRange(pos,pos);}
   if(e.target.id==='logQ'){S.logQ=e.target.value;const pos=e.target.selectionStart;render();const q=$('#logQ');q.focus();q.setSelectionRange(pos,pos);}
+  if(e.target.id==='ledQ'){S.ledQ=e.target.value;const pos=e.target.selectionStart;render();const q=$('#ledQ');q.focus();q.setSelectionRange(pos,pos);}
   if(e.target.id==='accQ'){S.accQ=e.target.value;const pos=e.target.selectionStart;render();const q=$('#accQ');q.focus();q.setSelectionRange(pos,pos);}
 });
 document.addEventListener('change',e=>{
@@ -1023,6 +1084,7 @@ document.addEventListener('change',e=>{
   if(e.target.id==='logF'){S.logF=e.target.value;render();}
   if(e.target.id==='accDept'){S.accDept=e.target.value;render();}
   if(e.target.id==='actOnly'){S.actOnly=e.target.value;render();}
+  if(e.target.id==='ledOnly'){S.ledOnly=e.target.checked;render();}
   if(e.target.id==='actAll'){S.actAll=e.target.checked;render();}
   if(e.target.id==='tplDept'){S.tplDept=e.target.value;S.tplDraft=null;render();}
   if(e.target.dataset&&e.target.dataset.perm){const[id,sc,l]=e.target.dataset.perm.split('|');const u=S.users.find(x=>x.id===id);if(!S.permDraft||S.permDraft.id!==id)S.permDraft={id,p:Object.fromEntries(PSCR.map(([k])=>[k,perm(u,k)]))};S.permDraft.p[sc]=+l;render();}
@@ -1054,6 +1116,11 @@ document.addEventListener('click',e=>{
   if(d.done){S.done[d.done]=!S.done[d.done];alog({area:'예외 처리',action:S.done[d.done]?'처리 완료 표시':'처리 완료 되돌리기',target:d.done,ok:true,who:'담당자'});render();return;}
   if(d.showfail){showFail(d.showfail);return;}
   if(d.trace){traceSku(d.trace);return;}
+  if(d.np){if(!canEdit('buy')){deny('buy','신제품 물량 확정');return;}S.newprod.status='경영진 확정';S.newprod.ver=`F-NEW-${yymm(TODAY)}`;alog({area:'구매',action:'신제품 초도 물량 경영진 확정',target:`${S.newprod.name} ${fmt(S.newprod.qty)}개`,ok:true,who:'담당자',reason:`전자결재 승인 반영 → 예측 버전 ${S.newprod.ver}로 잠금`});render();toast('신제품 초도 물량을 확정하고 예측 버전으로 잠갔습니다');return;}
+  if(d.oem){if(!canEdit('oem')){deny('oem','OEM 정산 처리');return;}const[k,id]=d.oem.split('|');const o=S.oem.find(x=>x.id===id);const a=o.inQty*o.price,b=o.billQty*o.billPrice;
+    if(k==='ask'){o.state='확인 요청';alog({area:'구매',action:'OEM 청구 확인 요청',target:`${o.oem} ${o.lot} ${o.sku}`,ok:true,who:'담당자',reason:`${o.status}: 계산 ${fmt(a)}원 vs 청구 ${fmt(b)}원`,sku:o.sku});render();toast(`${o.oem}에 확인 요청을 보냈습니다`);return;}
+    o.state='확정';o.result=k==='ours'?`입고·계약 기준 ${fmt(a)}원으로 확정`:`청구 기준 ${fmt(b)}원으로 확정 (근거 기록)`;alog({area:'구매',action:'OEM 정산 확정',target:`${o.oem} ${o.lot} ${o.sku}`,ok:true,who:'담당자',reason:o.result,sku:o.sku});render();toast(o.result);return;}
+  if(d.led){if(!canEdit('ledger')){deny('ledger','수불부 조정');return;}const g=S.ledger.find(x=>x.lot===d.led);const dd=g.tpl-g.end;g.adj+=dd;g.end=g.tpl;g.done=`조정 ${dd>0?'+':''}${fmt(dd)} 기입 · ${meLabel()}`;alog({area:'수불부',action:'수불부 조정 기입·확정',target:`${g.lot} ${g.sku}`,ok:true,who:'담당자',reason:`${g.note} → 조정 ${dd>0?'+':''}${dd}`,sku:g.sku});render();toast(`${g.lot} 조정을 기입하고 확정했습니다`);return;}
   if(d.fix||d.fixgo){const fid=(d.fix||d.fixgo).split('|')[0];const sc=AREA_SC[S.fails[fid].area];if(sc&&!canEdit(sc)){closeM();deny(sc,'실패 작업 고치기');return;}}
   if(d.acctab){S.accTab=d.acctab;render();return;}
   if(d.actuser){S.accTab='act';S.actSel=d.actuser;S.actOnly='all';render();return;}
@@ -1106,7 +1173,7 @@ document.addEventListener('click',e=>{
       else rows.push([o.no,chName(o.ch),o.sku,s.name,0,'','보류: '+r.reason]);});
       alog({area:'출고',action:'3PL 출고 지시서 생성',target:`${S.orders.length}건`,ok:true,who:'SCM물류',reason:'로트 지정 4건 · 보류 1건 포함'});render();
       modal('3PL 출고 지시서 (로트 지정 포함)','<p class="muted">로트 지정 건은 FEFO 대신 지정 로트로 피킹하도록 3PL에 보냅니다.</p>',toCSV(rows));break;}
-    case 'pkgBtn':{const rows=[['채널','거래유형',`${PML} 출고수량`,'매출인식수량','매출액(추정)','기말 회사자산(원가)','근거']];S.channels.forEach(c=>{const q=c.type==='직매입'?c.shipOct:c.soldOct;rows.push([c.name,c.type,c.shipOct,q,q*c.price,c.type==='직매입'?'':Math.round(c.est*S.avgCost),c.type==='직매입'?'출고증빙·매입확정서':'정산서·L4 추정']);});
+    case 'pkgBtn':{const rows=[['채널','거래유형',`${PML} 출고수량`,'매출인식수량','매출액(추정)','세금계산서 공급가액','부가세','기말 회사자산(원가)','근거']];S.channels.forEach(c=>{const q=c.type==='직매입'?c.shipOct:c.soldOct;rows.push([c.name,c.type,c.shipOct,q,q*c.price,q*c.price,Math.round(q*c.price*0.1),c.type==='직매입'?'':Math.round(c.est*S.avgCost),c.type==='직매입'?'출고증빙·매입확정서':'정산서·L4 추정']);});
       alog({area:'마감',action:`${PML} 마감 근거 묶음 생성`,target:`채널 ${S.channels.length}곳`,ok:true,who:'회계'});render();
       modal(`${PML} 마감 근거 묶음`,'<p class="muted">매출결의 첨부 양식 그대로 나갑니다. 크롬 확장(A3)이 이 값으로 그룹웨어 양식 칸을 채우고 제출은 사람이 누릅니다.</p>',toCSV(rows));break;}
     case 'costReq':{const rows=[['로트','SKU','품명','제조일','입고수량','임시원가 제안','요청']];S.lots.filter(l=>l.cost==null).forEach(l=>{const s=S.skuMap[l.sku];rows.push([l.lot,l.sku,s.name,fmtD(l.mfg),l.onhand,s.cost,`확정 원가 회신 요청 (기한 ${MD(5)})`]);});
