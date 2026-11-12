@@ -733,7 +733,7 @@ V.home=()=>{
     <div class="tw tall"><table><thead><tr><th>영역</th><th>내용</th><th>담당</th><th>기한</th><th></th></tr></thead><tbody>
     ${ex.map(e=>`<tr class="${S.done[e.id]?'done':''}"><td><span class="mono">${esc(e.area)}</span></td><td class="wrap"><b>${esc(e.title)}</b><br><span class="muted">${esc(e.detail)}</span></td><td>${pill(e.owner,'info')}</td><td>${esc(e.due)}</td><td><div class="row"><button class="sm" data-go="${e.go}">보기</button><button class="sm" data-done="${e.id}">${S.done[e.id]?'되돌리기':'처리 완료'}</button></div></td></tr>`).join('')}
     </tbody></table></div></div>
-    <div class="card stack"><h2 style="margin:0">시연 순서 (5분)</h2><ol class="steps">
+    <div class="card stack"><h2 style="margin:0">시연 순서</h2><ol class="steps">
       <li><div><b>아침 파일 투입 → 오류 격리</b><br><span class="muted">L1에서 수집을 다시 실행해 봅니다.</span><br><button class="ghost" data-go="collect">재고 수집·검증 →</button></div></li>
       <li><div><b>가용 조회 → 보류 요청 → 즉시 차감</b><br><span class="muted">S1에서 숫자를 누르면 원본 파일·행이 보입니다.</span><br><button class="ghost" data-go="stock">재고 바로보기 →</button></div></li>
       <li><div><b>마감 실행 → 3PL 전송 파일 생성</b><br><span class="muted">반영 확인 후에도 요청 가능 수량은 그대로입니다.</span><br><button class="ghost" data-go="hold">보류 요청함 →</button></div></li>
