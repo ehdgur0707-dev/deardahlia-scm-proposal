@@ -1079,6 +1079,7 @@ document.addEventListener('input',e=>{
   if(e.target.id==='accQ'){S.accQ=e.target.value;const pos=e.target.selectionStart;render();const q=$('#accQ');q.focus();q.setSelectionRange(pos,pos);}
 });
 document.addEventListener('change',e=>{
+  {const cv=(location.hash||'#home').slice(1);if(e.target.matches&&e.target.matches(EDIT_SEL)&&!canEdit(cv)){deny(cv,'설정 변경');return;}}
   if(e.target.id==='cat'){S.cat=e.target.value;render();}
   if(e.target.id==='short'){S.short=e.target.checked;render();}
   if(e.target.id==='logF'){S.logF=e.target.value;render();}
@@ -1095,6 +1096,7 @@ document.addEventListener('change',e=>{
 });
 document.addEventListener('submit',e=>{
   if(e.target.id!=='holdForm')return;e.preventDefault();
+  if(!canEdit('hold')){deny('hold','보류 요청');return;}
   const sku=$('#hSku').value.trim(),qty=+$('#hQty').value;
   if(!S.skuMap[sku]){toast('등록된 SKU를 고르세요');return;}
   if(!(qty>0)){toast('수량을 입력하세요');return;}
@@ -1111,6 +1113,7 @@ document.addEventListener('submit',e=>{
 });
 document.addEventListener('click',e=>{
   const t=e.target.closest('button,tr.clickable');if(!t)return;const d=t.dataset;
+  {const cv=(location.hash||'#home').slice(1);if(t.matches(EDIT_SEL)&&!canEdit(cv)){deny(cv,(t.textContent||'편집').trim().slice(0,24));return;}}
   if(d.go){go(d.go);return;}
   if(d.pull){if(!S.busy)pullSrc(d.pull);return;}
   if(d.done){S.done[d.done]=!S.done[d.done];alog({area:'예외 처리',action:S.done[d.done]?'처리 완료 표시':'처리 완료 되돌리기',target:d.done,ok:true,who:'담당자'});render();return;}
